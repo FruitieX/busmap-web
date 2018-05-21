@@ -30,7 +30,6 @@ const routeControl = Control.extend({
 interface SeenRoute {
   polyline?: Polyline,
   route: Route
-  control: Control
 };
 const seenRoutes: { [gtfsId: string]: SeenRoute } = {};
 
@@ -49,7 +48,7 @@ const initPolyline = (map: Map, r: Route) => {
 
 const updateRoutes = (map: Map) => (routes: Route[]) => {
   Object.values(seenRoutes).forEach(seenRoute => {
-    map.removeControl(seenRoute.control);
+    //map.removeControl(seenRoute.control);
     seenRoute.polyline && seenRoute.polyline.remove();
   })
 
@@ -57,13 +56,12 @@ const updateRoutes = (map: Map) => (routes: Route[]) => {
 
   routes.forEach(route => {
     const line = initPolyline(map, route);
-    const control = new routeControl(route);
-    map.addControl(control);
+    //const control = new routeControl(route);
+    //map.addControl(control);
 
     seenRoutes[route.gtfsId] = {
       polyline: line,
       route,
-      control
     }
   });
 };

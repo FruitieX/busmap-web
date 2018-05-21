@@ -71,7 +71,8 @@ const initApi = () => {
   return apiEvents;
 };
 
-export const subscribe = async (gtfsId: string, unsubscribe = false) => {
+let subscribeGetPolylinesTimeout: number | undefined = undefined;
+export const subscribe = (gtfsId: string, unsubscribe = false) => {
     try {
       // gtfsId is in format HSL:1234, mqtt wants only 1234 part
         // eslint-disable-next-line
@@ -100,9 +101,14 @@ export const subscribe = async (gtfsId: string, unsubscribe = false) => {
 
       const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
       apiEvents.emit('updateRoutes', subscribedRoutes);
-      const polylines = await fetchPolylines(subscriptions);
-      subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
-      apiEvents.emit('updateRoutes', subscribedRoutes);
+
+      if (subscribeGetPolylinesTimeout) clearTimeout(subscribeGetPolylinesTimeout);
+
+      subscribeGetPolylinesTimeout = setTimeout(async () => {
+        const polylines = await fetchPolylines(subscriptions);
+        subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
+        apiEvents.emit('updateRoutes', subscribedRoutes);
+      });
     } catch(e) {
       console.log('error while subscribing:', e);
     }
