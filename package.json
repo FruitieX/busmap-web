@@ -1,0 +1,24 @@
+{
+  "name": "busmap-leaflet",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "parcel src/index.html",
+    "build": "parcel build src/index.html",
+    "deploy": "surge -d busmap-leaflet.surge.sh dist"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.2.7",
+    "babel-preset-env": "^1.7.0",
+    "babel-preset-preact": "^1.1.0",
+    "parcel-bundler": "^1.8.1",
+    "typescript": "^2.8.3"
+  },
+  "dependencies": {
+    "leaflet": "^1.3.1",
+    "leaflet.animatedmarker": "^1.0.0",
+    "leaflet.locatecontrol": "^0.62.0",
+    "mqtt": "^2.18.0"
+  }
+}

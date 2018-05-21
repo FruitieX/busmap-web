@@ -1,0 +1,27 @@
+body {
+  margin: 0;
+}
+
+#map {
+  width: auto;
+  height: 100vh;
+}
+
+.vehicle {
+  background-color: #fff;
+  text-align: center;
+  padding: 4;
+  border-radius: 4px;
+  opacity: 1;
+}
+
+.routeId {
+  margin-top: -4;
+}
+
+.dest {
+  font-size: 10;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
