@@ -5,6 +5,14 @@ import { Vehicle, Route } from './types';
 import initVehicles from './vehicles';
 import initRoutes from './routes';
 
+/*
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js');
+  });
+}
+*/
+
 const activeRoutes = JSON.parse(localStorage.getItem("activeRoutes") || "[]");
 
 const map = initMap();
