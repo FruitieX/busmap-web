@@ -24,15 +24,12 @@ export default () => {
   	//attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
-  map.on('locationerror', (e) => {
-    console.log('failed to get location:', e);
-  });
-
   // control contains more stuff than what is in the typedefs
   const lc = (<any>control).locate({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
     keepCurrentZoomLevel: true,
+    onLocationError: (err: Error) => console.log(err.message),
   	locateOptions: {
   		enableHighAccuracy: true,
   	}
@@ -42,9 +39,11 @@ export default () => {
 
   // Stop following user location if they zoom in/out
   map.on('zoomstart', () => {
-    lc._userPanned = true;
-    lc._updateContainerStyle();
-    lc._drawMarker();
+    if (lc._active) {
+      lc._userPanned = true;
+      lc._updateContainerStyle();
+      lc._drawMarker();
+    }
   });
 
   return map;
