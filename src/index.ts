@@ -5,14 +5,14 @@ import { Vehicle, Route } from './types';
 import initVehicles from './vehicles';
 import initRoutes from './routes';
 
+const activeRoutes = JSON.parse(localStorage.getItem("activeRoutes") || "[]");
+
 const map = initMap();
 const apiEvents = initApi();
 initRoutes(map, apiEvents);
 initVehicles(map, apiEvents);
 
-subscribe('HSL:2550');
-subscribe('HSL:2551');
-subscribe('HSL:2552');
+activeRoutes.forEach((gtfsId: string) => subscribe(gtfsId, false, true));
 
 if (module.hot) {
   module.hot.dispose(() => {

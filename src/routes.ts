@@ -1,4 +1,4 @@
-import { Map, Polyline, polyline, Control, DomUtil, control } from 'leaflet';
+import { Map, Polyline, polyline, Control, DomUtil, control, popup, Point } from 'leaflet';
 import { Route } from './types';
 import { indexToHue } from './util';
 import { getSubscriptions, getSubscribedRoutes, unsubscribe, getRoutes, subscribe } from './api';
@@ -57,6 +57,16 @@ const openRoutes = () => {
   searchBox.onclick = (e) => {
     e.stopPropagation();
   }
+  searchBox.onkeypress = (e) => {
+    if (e.keyCode === 13) {
+      const searchValue = e.target.value.trim().toLowerCase();
+      const route = allRoutes.find(route => route.shortName === searchValue);
+      route && subscribe(route.gtfsId);
+      hideSearch();
+
+      return false;
+    };
+  };
   searchBox.oninput = (e) => {
     e.preventDefault()
 
@@ -111,8 +121,22 @@ const openRoutes = () => {
   }
 
   const container = document.createElement('div');
-  const hideSearch = () => body.removeChild(container);
+  let hiding = false;
+  const hideSearch = () => {
+    if (hiding) return;
+    hiding = true;
+    container.style.opacity = '0';
+    setTimeout(() => body.removeChild(container), 300);
+  }
+  document.onkeydown = function(e) {
+    // handle escape key
+    if (e.keyCode === 27) {
+      hideSearch();
+    }
+  };
   container.style.backgroundColor = '#00000080';
+  container.style.opacity = '0';
+  container.style.transition = 'all 300ms';
   container.style.position = 'absolute';
   container.style.top = '0';
   container.style.width = '100vw';
@@ -132,6 +156,9 @@ const openRoutes = () => {
   const body = document.getElementsByTagName('body')[0];
   body.appendChild(container);
   container.appendChild(root);
+  setTimeout(() => container.style.opacity = '1');
+
+  document.getElementById('searchBox').focus();
 };
 
 const routeControl = Control.extend({
@@ -150,7 +177,7 @@ const routeControl = Control.extend({
     container.innerHTML = '<a><span class="icon-bus"></span></a>';
 
     container.onclick = () => {
-      openRoutes(map);
+      openRoutes();
     }
     return container;
   }
@@ -170,7 +197,23 @@ const initPolyline = (map: Map, r: Route) => {
 
   const hue = indexToHue(subscriptionIndex, subscriptions.length);
   const color = `hsla(${hue}, 60%, 65%, 0.75)`;
-  const line = polyline(r.polyline, {color}).addTo(map);
+  const line = polyline(r.polyline, {color, weight: 6, dashArray: '8, 20'}).addTo(map);
+
+  const p =
+  popup({ autoPanPadding: new Point(50, 50), className: 'popup', offset: new Point(0, -10) })
+    .setContent(`
+      <div class="routeId">
+      <span class="icon-bus"></span>
+      ${r.shortName} (${r.longName})
+      </div>
+      <div class="dest">Route ID: ${r.gtfsId}</div>
+      <button class="button" onclick=unsubscribe("${r.gtfsId}")>Remove route</button>
+      `)
+  line.on('popupopen', () => {
+    map.fitBounds(line.getBounds());
+  });
+
+  line.bindPopup(p);
 
   return line;
 };

@@ -72,7 +72,7 @@ const initApi = () => {
 };
 
 let subscribeGetPolylinesTimeout: number | undefined = undefined;
-export const subscribe = (gtfsId: string, unsubscribe = false) => {
+export const subscribe = (gtfsId: string, unsubscribe = false, disableStorage = false) => {
     try {
       // gtfsId is in format HSL:1234, mqtt wants only 1234 part
         // eslint-disable-next-line
@@ -99,6 +99,11 @@ export const subscribe = (gtfsId: string, unsubscribe = false) => {
           subscriptions.push(gtfsId);
       }
 
+      if (!disableStorage) {
+        console.log('storing subscriptions', subscriptions);
+        localStorage.setItem('activeRoutes', JSON.stringify(subscriptions));
+      }
+
       const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
       apiEvents.emit('updateRoutes', subscribedRoutes);
 
@@ -115,6 +120,7 @@ export const subscribe = (gtfsId: string, unsubscribe = false) => {
   };
 
 export const unsubscribe = (gtfsId: string) => subscribe(gtfsId, true);
+window.unsubscribe = unsubscribe;
 
 export default initApi;
 

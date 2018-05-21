@@ -32,6 +32,7 @@ const updatePopup = (popup: Popup, v: Vehicle) => {
 <div class="dest">Speed: ${Number(v.spd * 3.6).toFixed(2)} km/h</div>
 <div class="dest">Acceleration: ${Number(v.acc).toFixed(2)} m/s²</div>
 <div class="dest">Heading: ${v.hdg}</div>
+<button class="button" onclick=unsubscribe("${v.gtfsId}")>Remove route</button>
 `);
 };
 
