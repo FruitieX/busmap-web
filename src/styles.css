@@ -5,11 +5,13 @@ body {
   -ms-user-select:none;
   user-select:none;
   -o-user-select:none;
+  height: 100%;
+  width: 100%;
 }
 
 #map {
   width: auto;
-  height: 100vh;
+  height: 100%;
   z-index: 0;
 }
 

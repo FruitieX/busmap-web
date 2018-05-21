@@ -139,9 +139,9 @@ const openRoutes = () => {
   container.style.transition = 'all 300ms';
   container.style.position = 'absolute';
   container.style.top = '0';
-  container.style.width = '100vw';
+  container.style.width = '100%';
   container.style.left = '0';
-  container.style.height = '100vh';
+  container.style.height = '100%';
   container.onclick = hideSearch;
   container.style.overflowY = 'auto';
 
