@@ -1,11 +1,36 @@
-import { Map, Polyline, polyline } from 'leaflet';
+import { Map, Polyline, polyline, Control, DomUtil } from 'leaflet';
 import { Route } from './types';
 import { indexToHue } from './util';
-import { getSubscriptions } from './api';
+import { getSubscriptions, unsubscribe } from './api';
+import EventEmitter from 'eventemitter3';
+
+const routeControl = Control.extend({
+  options: {
+    position: 'bottomleft'
+  },
+
+  initialize: function(route: Route) {
+    this.route = route;
+  },
+
+  onAdd: function(map: Map) {
+    const container = DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+    container.style.backgroundColor = 'white';
+    container.style.width = '50px';
+    container.style.height = '30px';
+    container.innerText = this.route.shortName;
+
+    container.onclick = () => {
+      unsubscribe(this.route.gtfsId)
+    }
+    return container;
+  }
+});
 
 interface SeenRoute {
   polyline?: Polyline,
   route: Route
+  control: Control
 };
 const seenRoutes: { [gtfsId: string]: SeenRoute } = {};
 
@@ -23,26 +48,28 @@ const initPolyline = (map: Map, r: Route) => {
 };
 
 const updateRoutes = (map: Map) => (routes: Route[]) => {
+  Object.values(seenRoutes).forEach(seenRoute => {
+    map.removeControl(seenRoute.control);
+    seenRoute.polyline && seenRoute.polyline.remove();
+  })
+
+  console.log(routes);
+
   routes.forEach(route => {
-    const seenRoute = seenRoutes[route.gtfsId];
+    const line = initPolyline(map, route);
+    const control = new routeControl(route);
+    map.addControl(control);
 
-    if (!seenRoute) {
-      const line = initPolyline(map, route);
-
-      seenRoutes[route.gtfsId] = {
-        polyline: line,
-        route,
-      }
-    } else {
-      if (route.polyline) {
-        if (seenRoute.polyline) {
-          seenRoute.polyline.setLatLngs(route.polyline);
-        } else {
-          seenRoute.polyline = initPolyline(map, route);
-        }
-      }
+    seenRoutes[route.gtfsId] = {
+      polyline: line,
+      route,
+      control
     }
   });
 };
 
-export default updateRoutes;
+const initRoutes = (map: Map, apiEvents: EventEmitter) => {
+  apiEvents.on('updateRoutes', updateRoutes(map));
+}
+
+export default initRoutes;

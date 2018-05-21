@@ -7,6 +7,10 @@ body {
   height: 100vh;
 }
 
+.leaflet-bottom {
+  display: flex;
+}
+
 .vehicle {
   background-color: #fff;
   text-align: center;

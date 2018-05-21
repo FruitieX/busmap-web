@@ -1,16 +1,18 @@
 import './styles.css';
 import initMap from './map';
-import initApi from './api';
+import initApi, { subscribe } from './api';
 import { Vehicle, Route } from './types';
-import updateVehicle from './vehicles';
-import updateRoutes from './routes';
+import initVehicles from './vehicles';
+import initRoutes from './routes';
 
 const map = initMap();
-const api = initApi(updateVehicle(map), updateRoutes(map));
+const apiEvents = initApi();
+initRoutes(map, apiEvents);
+initVehicles(map, apiEvents);
 
-api.subscribe('HSL:2550');
-api.subscribe('HSL:2551');
-api.subscribe('HSL:2552');
+subscribe('HSL:2550');
+subscribe('HSL:2551');
+subscribe('HSL:2552');
 
 if (module.hot) {
   module.hot.dispose(() => {

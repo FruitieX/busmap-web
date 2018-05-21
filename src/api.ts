@@ -1,14 +1,17 @@
 import { connect } from 'mqtt';
 import { Route, ApiVehicle, Vehicle, ApiRoute } from './types';
 import { latLng, LatLng } from 'leaflet';
+import EventEmitter from 'eventemitter3';
 
 let routes : { [gtfsId: string]: Route } = JSON.parse(localStorage.getItem("routes") || "{}");
 let polylines = {};
 let subscriptions: string[] = [];
+let mqttClient = null;
+let apiEvents = new EventEmitter();
 
 const gtfsIdRe = /.+:(.+)/;
-const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
-  const mqttClient = connect('wss://mqtt.hsl.fi');
+const initApi = () => {
+  mqttClient = connect('wss://mqtt.hsl.fi');
   mqttClient.on('message', (topic, message) => {
     let vehicle: Vehicle | undefined = undefined;
 
@@ -25,6 +28,9 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
       // Route not found for vehicle
       // This probably means we didn't fetch all routes yet
       if (!route) return console.log('Route not found for vehicle', apiVehicle.desi);
+
+      // Route is not currently subscribed to
+      if (!subscriptions.includes(route.gtfsId)) return;
 
       const routeDestinations = route.longName
         .split('-')
@@ -45,7 +51,7 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
     }
 
     if (vehicle)
-      vehicleUpdated(vehicle);
+      apiEvents.emit('updateVehicle', vehicle);
   });
 
   fetchRoutes().then(async (_routes: ApiRoute[]) => {
@@ -56,12 +62,16 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
     localStorage.setItem("routes", JSON.stringify(routes));
 
     const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
+    apiEvents.emit('updateRoutes', subscribedRoutes);
     const polylines = await fetchPolylines(subscriptions);
     subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
-    routesUpdated(subscribedRoutes);
+    apiEvents.emit('updateRoutes', subscribedRoutes);
   });
 
-  const subscribe = async (gtfsId: string, unsubscribe = false) => {
+  return apiEvents;
+};
+
+export const subscribe = async (gtfsId: string, unsubscribe = false) => {
     try {
       // gtfsId is in format HSL:1234, mqtt wants only 1234 part
         // eslint-disable-next-line
@@ -78,6 +88,8 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
         const vehIndex = subscriptions.indexOf(gtfsId);
         if (vehIndex !== -1)
           subscriptions.splice(vehIndex, 1);
+
+        apiEvents.emit('removeRoute', { gtfsId });
       } else {
         console.log('subscribing to', topic);
         mqttClient.subscribe(topic);
@@ -85,25 +97,24 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
         if (!subscriptions.includes(gtfsId))
           subscriptions.push(gtfsId);
       }
+
+      const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
+      apiEvents.emit('updateRoutes', subscribedRoutes);
+      const polylines = await fetchPolylines(subscriptions);
+      subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
+      apiEvents.emit('updateRoutes', subscribedRoutes);
     } catch(e) {
       console.log('error while subscribing:', e);
     }
   };
 
-  return {
-    subscribe,
-    unsubscribe: (gtfsId: string) => subscribe(gtfsId, true),
-  };
-};
+export const unsubscribe = (gtfsId: string) => subscribe(gtfsId, true);
 
 export default initApi;
 
 export const getRoutes = () => {
   return routes;
 }
-
-export const getRoute = () => {
-};
 
 export const getSubscriptions = () => subscriptions;
 

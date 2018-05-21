@@ -1,8 +1,9 @@
 import { divIcon, marker, Map, Marker, DivIcon } from 'leaflet';
 import * as L from 'leaflet';
-import { Vehicle } from "./types";
+import { Vehicle, Route } from "./types";
 import { getSubscriptions } from './api';
 import { indexToHue } from './util';
+import EventEmitter from 'eventemitter3';
 
 interface SeenVehicle {
   icon: DivIcon,
@@ -11,14 +12,17 @@ interface SeenVehicle {
 };
 const seenVehicles: { [vehicleId: string]: SeenVehicle } = {};
 
-const initMarker = (map: Map, v: Vehicle, icon) => {
-  const marker = L.animatedMarker(v.latLng, {icon}).addTo(map);
-
+const getBackgroundColor = (gtfsId: string) => {
   const subscriptions = getSubscriptions();
-  const subscriptionIndex = subscriptions.indexOf(v.gtfsId);
+  const subscriptionIndex = subscriptions.indexOf(gtfsId);
 
   const hue = indexToHue(subscriptionIndex, subscriptions.length);
-  marker._icon.style.backgroundColor = `hsla(${hue}, 60%, 65%, 0.75)`;
+  return `hsla(${hue}, 60%, 65%, 0.75)`;
+};
+
+const initMarker = (map: Map, v: Vehicle, icon) => {
+  const marker = L.animatedMarker(v.latLng, {icon}).addTo(map);
+  marker._icon.style.backgroundColor = getBackgroundColor(v.gtfsId);
   return marker;
 };
 
@@ -41,13 +45,39 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
         seenVehicle.marker = initMarker(map, v, seenVehicle.icon);
       } else {
         seenVehicle.marker.setLine(v.latLng)
+        seenVehicle.marker._icon.style.backgroundColor = getBackgroundColor(seenVehicle.vehicle.gtfsId);
       }
     } else if (!v.latLng && seenVehicle.marker) {
       // Api supplied null coordinates, remove marker
-      seenVehicle.marker.remove();
+      map.removeLayer(seenVehicle.marker);
       delete seenVehicle.marker;
     }
   }
 };
 
-export default updateVehicle;
+const removeRoute = (map: Map) => (r: Route) => {
+  Object.values(seenVehicles).forEach(seenVehicle => {
+    if (seenVehicle.vehicle.gtfsId === r.gtfsId) {
+      if (seenVehicle.marker) {
+        map.removeLayer(seenVehicle.marker);
+        delete seenVehicles[seenVehicle.vehicle.veh];
+      }
+    }
+  });
+};
+
+const updateRoutes = (map: Map) => (r: Route[]) => {
+  Object.values(seenVehicles).forEach(seenVehicle => {
+    if (r.find(route => route.gtfsId === seenVehicle.vehicle.gtfsId)) {
+      seenVehicle.marker._icon.style.backgroundColor = getBackgroundColor(seenVehicle.vehicle.gtfsId);
+    }
+  });
+};
+
+const initVehicles = (map: Map, apiEvents: EventEmitter) => {
+  apiEvents.on('updateVehicle', updateVehicle(map));
+  apiEvents.on('removeRoute', removeRoute(map));
+  apiEvents.on('updateRoutes', updateRoutes(map));
+}
+
+export default initVehicles;

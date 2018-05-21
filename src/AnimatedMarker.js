@@ -1,15 +1,13 @@
 const getTransition = (speed = 0) => {
-  return `all ${speed}ms linear, opacity 500ms`;
+  return `all ${speed}ms linear, opacity 500ms linear, background-color 500ms linear`;
 };
 
 L.AnimatedMarker = L.Marker.extend({
   options: {
-    // meters
-    distance: 200,
     // ms
     interval: 1500,
     // callback onend
-    onEnd: function(){},
+    //onEnd: function(){},
   },
 
   initialize: function (latLng, options) {
@@ -44,6 +42,8 @@ L.AnimatedMarker = L.Marker.extend({
   },
 
   onRemove: function (map) {
+    L.Marker.prototype.onRemove.call(this, map);
+
     map.off('zoomstart', this._zoomStart);
     map.off('zoomend', this._zoomEnd);
   },
