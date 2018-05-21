@@ -24,6 +24,10 @@ export default () => {
   	//attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
+  map.on('locationerror', (e) => {
+    console.log('failed to get location:', e);
+  });
+
   // control contains more stuff than what is in the typedefs
   const lc = (<any>control).locate({
   	icon: 'icon-location',
