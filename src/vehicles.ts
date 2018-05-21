@@ -1,6 +1,8 @@
 import { divIcon, marker, Map, Marker, DivIcon } from 'leaflet';
 import * as L from 'leaflet';
 import { Vehicle } from "./types";
+import { getSubscriptions } from './api';
+import { indexToHue } from './util';
 
 interface SeenVehicle {
   icon: DivIcon,
@@ -8,6 +10,17 @@ interface SeenVehicle {
   vehicle: Vehicle
 };
 const seenVehicles: { [vehicleId: string]: SeenVehicle } = {};
+
+const initMarker = (map: Map, v: Vehicle, icon) => {
+  const marker = L.animatedMarker(v.latLng, {icon}).addTo(map);
+
+  const subscriptions = getSubscriptions();
+  const subscriptionIndex = subscriptions.indexOf(v.gtfsId);
+
+  const hue = indexToHue(subscriptionIndex, subscriptions.length);
+  marker._icon.style.backgroundColor = `hsla(${hue}, 60%, 65%, 0.75)`;
+  return marker;
+};
 
 const updateVehicle = (map: Map) => (v: Vehicle) => {
   const seenVehicle = seenVehicles[v.veh];
@@ -18,14 +31,14 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
 
     seenVehicles[v.veh] = {
       icon,
-      marker: v.latLng && L.animatedMarker(v.latLng, {icon}).addTo(map),
+      marker: v.latLng && initMarker(map, v, icon),
       vehicle: v
     };
   } else {
     // Vehicle seen before, update marker
     if (v.latLng) {
       if (!seenVehicle.marker) {
-        seenVehicle.marker = L.animatedMarker(v.latLng, {icon: seenVehicle.icon}).addTo(map);
+        seenVehicle.marker = initMarker(map, v, seenVehicle.icon);
       } else {
         seenVehicle.marker.setLine(v.latLng)
       }

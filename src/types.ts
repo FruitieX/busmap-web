@@ -35,4 +35,5 @@ export interface Vehicle extends ApiVehicle {
   lastUpdate: number;
   latLng?: LatLng;
   dest: string;
+  gtfsId: string;
 };

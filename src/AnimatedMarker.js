@@ -7,13 +7,13 @@ L.AnimatedMarker = L.Marker.extend({
     // meters
     distance: 200,
     // ms
-    interval: 2000,
+    interval: 1500,
     // callback onend
     onEnd: function(){},
   },
 
   initialize: function (latLng, options) {
-    this.setLine(latLng);
+    this.setLine(latLng, true);
     L.Marker.prototype.initialize.call(this, latLng, options);
   },
 
@@ -38,9 +38,9 @@ L.AnimatedMarker = L.Marker.extend({
     this._zoomEnd = this.zoomEnd.bind(this);
 
     map.on('zoomstart', this._zoomStart);
-    map.on('zoomend', this._zoomEnd);
+    map.on('zoomend', () => setTimeout(this._zoomEnd));
 
-    this.animate(true);
+    //this.animate(true);
   },
 
   onRemove: function (map) {
@@ -52,27 +52,21 @@ L.AnimatedMarker = L.Marker.extend({
     // Looks terrible while zooming, skip
     if (this.zooming) return;
 
-    const speed = this.options.interval;
+    const speed = instant ? 0 : this.options.interval;
 
-        /*
-    // Normalize the transition speed from vertex to vertex
-    if (this._i < len && this.i > 0) {
-      speed = this._latlngs[this._i-1].distanceTo(this._latlngs[this._i]) / this.options.distance * this.options.interval;
+    if (this._icon) {
+      this._icon.style.opacity = 1;
+      this._icon.style[L.DomUtil.TRANSITION] = getTransition(speed);
     }
-    */
-
-    if (!instant) {
-      if (this._icon) { this._icon.style[L.DomUtil.TRANSITION] = getTransition(speed); }
-      if (this._shadow) { this._shadow.style[L.DomUtil.TRANSITION] = getTransition(speed); }
-    }
+    if (this._shadow) { this._shadow.style[L.DomUtil.TRANSITION] = getTransition(speed); }
 
     // Move to the next vertex
     this.setLatLng(this.latLng);
   },
 
-  setLine: function(latLng){
+  setLine: function(latLng, instant){
     this.latLng = latLng
-    this.animate();
+    this.animate(instant);
   }
 });
 

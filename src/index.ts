@@ -11,3 +11,9 @@ const api = initApi(updateVehicle(map), updateRoutes(map));
 api.subscribe('HSL:2550');
 api.subscribe('HSL:2551');
 api.subscribe('HSL:2552');
+
+if (module.hot) {
+  module.hot.dispose(() => {
+    window.location.reload();
+  });
+}

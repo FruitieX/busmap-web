@@ -2,8 +2,9 @@ import { connect } from 'mqtt';
 import { Route, ApiVehicle, Vehicle, ApiRoute } from './types';
 import { latLng, LatLng } from 'leaflet';
 
-let routes : { [routeId: string]: Route } = {};
+let routes : { [gtfsId: string]: Route } = JSON.parse(localStorage.getItem("routes") || "{}");
 let polylines = {};
+let subscriptions: string[] = [];
 
 const gtfsIdRe = /.+:(.+)/;
 const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
@@ -19,11 +20,11 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
         ll = latLng(apiVehicle.lat, apiVehicle.long);
       }
 
-      const route = routes[apiVehicle.desi];
+      const route = Object.values(routes).find(route => route.shortName === apiVehicle.desi);
 
       // Route not found for vehicle
       // This probably means we didn't fetch all routes yet
-      if (!route) return;
+      if (!route) return console.log('Route not found for vehicle', apiVehicle.desi);
 
       const routeDestinations = route.longName
         .split('-')
@@ -36,7 +37,8 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
         ...apiVehicle,
         lastUpdate: new Date().getTime(),
         latLng: ll,
-        dest: dest
+        dest: dest,
+        gtfsId: route.gtfsId
       };
     } catch(e) {
       console.log('error in handleMessage:', e);
@@ -46,14 +48,20 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
       vehicleUpdated(vehicle);
   });
 
-  fetchRoutes().then((_routes: ApiRoute[]) => {
+  fetchRoutes().then(async (_routes: ApiRoute[]) => {
     _routes.forEach(route => {
-      routes[route.shortName] = route;
+      routes[route.gtfsId] = route;
     });
-    routesUpdated(routes);
+
+    localStorage.setItem("routes", JSON.stringify(routes));
+
+    const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
+    const polylines = await fetchPolylines(subscriptions);
+    subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
+    routesUpdated(subscribedRoutes);
   });
 
-  const subscribe = (gtfsId: string, unsubscribe = false) => {
+  const subscribe = async (gtfsId: string, unsubscribe = false) => {
     try {
       // gtfsId is in format HSL:1234, mqtt wants only 1234 part
         // eslint-disable-next-line
@@ -66,9 +74,16 @@ const initApi = (vehicleUpdated: Function, routesUpdated: Function) => {
       if (unsubscribe) {
         console.log('unsubscribing from', topic);
         mqttClient.unsubscribe(topic);
+
+        const vehIndex = subscriptions.indexOf(gtfsId);
+        if (vehIndex !== -1)
+          subscriptions.splice(vehIndex, 1);
       } else {
         console.log('subscribing to', topic);
         mqttClient.subscribe(topic);
+
+        if (!subscriptions.includes(gtfsId))
+          subscriptions.push(gtfsId);
       }
     } catch(e) {
       console.log('error while subscribing:', e);
@@ -90,6 +105,7 @@ export const getRoutes = () => {
 export const getRoute = () => {
 };
 
+export const getSubscriptions = () => subscriptions;
 
 const allRoutesQuery =
 `{
@@ -185,13 +201,10 @@ const fetchPolylines = (gtfsIdLines: string[]) => {
         // sort by number of trips for today
         route.patterns.sort((a, b) => b.tripsForDate.length - a.tripsForDate.length);
         route.patterns[0].geometry.forEach(coord => {
-          polyline.push({
-            lat: coord.lat,
-            lng: coord.lon,
-          });
+          polyline.push([ coord.lat, coord.lon ]);
         });
 
-        polylines[route.shortName] = polyline;
+        polylines[route.gtfsId] = polyline;
       });
 
       callback(polylines);
