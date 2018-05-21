@@ -5,6 +5,7 @@ body {
 #map {
   width: auto;
   height: 100vh;
+  z-index: 0;
 }
 
 .leaflet-bottom {
@@ -28,4 +29,16 @@ body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.result {
+  background-color: #ffffffaa;
+}
+.result:hover {
+  background-color: #ffffffdd;
+}
+
+.highlight:hover {
+  opacity: 0.5;
+  transition: all 300ms;
 }

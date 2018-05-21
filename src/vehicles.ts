@@ -24,7 +24,7 @@ const updatePopup = (popup: Popup, v: Vehicle) => {
   popup.setContent(`
 <div class="routeId">
   <span class="icon-bus"></span>
-  ${v.desi}
+  ${v.desi} (${v.dest})
 </div>
 <div class="dest">Vehicle ID: ${v.veh}</div>
 <div class="dest">Last update: ${new Date(v.lastUpdate).toLocaleTimeString()}</div>
@@ -47,12 +47,16 @@ const initMarker = (map: Map, v: Vehicle, icon) => {
   return marker;
 };
 
+const iconHtml = (v: Vehicle) => {
+  return `<div class="routeId"><span class="icon-bus"></span>${v.desi}</div><div class="dest">${v.dest}</div>`;
+};
+
 const updateVehicle = (map: Map) => (v: Vehicle) => {
   const seenVehicle = seenVehicles[v.veh];
 
   if (!seenVehicle) {
     // Vehicle not seen before, create new icon & marker
-  	const icon = divIcon({ className: 'vehicle', iconSize: [50, 25], html: `<div class="routeId"><span class="icon-bus"></span>${v.desi}</div><div class="dest">${v.dest}</div>` });
+  	const icon = divIcon({ className: 'vehicle', iconSize: [50, 25], html: iconHtml(v) });
 
     seenVehicles[v.veh] = {
       icon,
@@ -67,6 +71,7 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
       } else {
         seenVehicle.marker.setLine(v.latLng)
         seenVehicle.marker._icon.style.backgroundColor = getBackgroundColor(seenVehicle.vehicle.gtfsId);
+        seenVehicle.marker._icon.innerHTML = iconHtml(v);
         updatePopup(seenVehicle.marker._popup, v);
       }
     } else if (!v.latLng && seenVehicle.marker) {

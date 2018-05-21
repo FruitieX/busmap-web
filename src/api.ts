@@ -123,6 +123,11 @@ export const getRoutes = () => {
 }
 
 export const getSubscriptions = () => subscriptions;
+export const getSubscribedRoutes = (): Route[] => {
+  return subscriptions.map(gtfsId => {
+    return routes[gtfsId];
+  });
+};
 
 const allRoutesQuery =
 `{
