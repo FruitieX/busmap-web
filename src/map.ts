@@ -25,14 +25,23 @@ export default () => {
   }).addTo(map);
 
   // control contains more stuff than what is in the typedefs
-  (<any>control).locate({
+  const lc = (<any>control).locate({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
+    keepCurrentZoomLevel: true,
   	locateOptions: {
   		enableHighAccuracy: true,
-  		maxZoom: 16,
   	}
-  }).addTo(map).start();
+  }).addTo(map);
+
+  lc.start();
+
+  // Stop following user location if they zoom in/out
+  map.on('zoomstart', () => {
+    lc._userPanned = true;
+    lc._updateContainerStyle();
+    lc._drawMarker();
+  });
 
   return map;
 };
