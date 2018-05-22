@@ -55,7 +55,8 @@ export default () => {
     },
 
     onAdd: function(map: LeafletMap) {
-      const container = DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const container = DomUtil.create('a', 'leaflet-bar leaflet-control');
+      container.title = "Fork me on GitHub";
       container.style.backgroundColor = 'white';
       container.style.width = '30px';
       container.style.height = '30px';

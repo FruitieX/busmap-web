@@ -168,18 +168,24 @@ const routeControl = Control.extend({
 
   onAdd: function(map: Map) {
     const container = DomUtil.create('div', 'leaflet-bar leaflet-control');
+    container.title = 'Add/Remove routes';
     container.style.backgroundColor = 'white';
     container.style.width = '30px';
     container.style.height = '30px';
     container.style.fontSize = '1.4em';
     container.style.lineHeight = '30px';
     container.style.textAlign = 'center';
-    container.innerHTML = '<a><span class="icon-bus"></span></a>';
+    this.icon = DomUtil.create("a", "icon-bus", container);
+    //this.iconText = DomUtil.create("div", undefined, container);
 
     container.onclick = () => {
       openRoutes();
     }
     return container;
+  },
+
+  setIconText: function(text: string) {
+    //this.iconText.innerHTML = text;
   }
 });
 
@@ -237,8 +243,18 @@ const updateRoutes = (map: Map) => (routes: Route[]) => {
 };
 
 const initRoutes = (map: Map, apiEvents: EventEmitter) => {
-  apiEvents.on('updateRoutes', updateRoutes(map));
-  map.addControl(new routeControl());
+  const RouteControl = new routeControl()
+  apiEvents.on('updateRoutes', (routes: Route[]) => {
+    if (!routes.length) {
+      RouteControl.setIconText('Start by adding some bus services from here!');
+    } else {
+      RouteControl.setIconText('');
+    }
+
+    updateRoutes(map)(routes);
+  });
+  
+  map.addControl(RouteControl);
 }
 
 export default initRoutes;
