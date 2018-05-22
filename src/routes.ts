@@ -60,7 +60,7 @@ const openRoutes = () => {
   searchBox.onkeypress = (e) => {
     if (e.keyCode === 13) {
       const searchValue = e.target.value.trim().toLowerCase();
-      const route = allRoutes.find(route => route.shortName === searchValue);
+      const route = allRoutes.find(route => route.shortName.trim().toLowerCase() === searchValue);
       route && subscribe(route.gtfsId);
       hideSearch();
 
@@ -253,7 +253,7 @@ const initRoutes = (map: Map, apiEvents: EventEmitter) => {
 
     updateRoutes(map)(routes);
   });
-  
+
   map.addControl(RouteControl);
 }
 
