@@ -196,7 +196,7 @@ const initPolyline = (map: Map, r: Route) => {
   const subscriptionIndex = subscriptions.indexOf(r.gtfsId);
 
   const hue = indexToHue(subscriptionIndex, subscriptions.length);
-  const color = `hsla(${hue}, 60%, 65%, 0.75)`;
+  const color = `hsla(${hue}, 70%, 42%, 0.75)`;
   const line = polyline(r.polyline, {color, weight: 6, dashArray: '8, 20'}).addTo(map);
 
   const p =
