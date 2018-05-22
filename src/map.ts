@@ -4,6 +4,7 @@ import 'leaflet.locatecontrol/dist/L.Control.Locate.min.css';
 import './AnimatedMarker';
 import './fontello/css/fontello.css';
 import './fontello/css/animation.css';
+import pkg from '../package.json';
 
 import { map as LeafletMap, tileLayer, control, Control, DomUtil } from 'leaflet';
 
@@ -20,7 +21,7 @@ export default () => {
   // Initialize the base layer
   tileLayer(tileServer, {
   	maxZoom: 19,
-    attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | <a href="https://carto.com/location-data-services/basemaps/">CartoDB</a> | <a href="https://digitransit.fi/en/developers/apis/4-realtime-api/vehicle-positions/">Digitransit</a>'
+    attribution: `v${pkg.version} | &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | <a href="https://carto.com/location-data-services/basemaps/">CartoDB</a> | <a href="https://digitransit.fi/en/developers/apis/4-realtime-api/vehicle-positions/">Digitransit</a>`
   	//attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
@@ -51,7 +52,7 @@ export default () => {
 
   const githubControl = Control.extend({
     options: {
-      position: 'bottomleft',
+      position: 'topright',
     },
 
     onAdd: function(map: LeafletMap) {
