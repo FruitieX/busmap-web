@@ -103,27 +103,32 @@ L.AnimatedMarker = L.Marker.extend({
     // Move to the next location
     this.setLatLng(this.latLng);
 
-    if (!this.prevLatLng) return;
-
-    const dist = this._map.distance(this.prevLatLng, this.latLng);
-
-    // A bus shouldn't travel 100 meters in a second...
-    if (dist > 100) return;
-
-    // Add animations
-    const speed = instant ? 0 : this.options.interval;
-
-    if (this._icon) {
-      this._icon.style.opacity = 1;
-      this._icon.style[L.DomUtil.TRANSITION] = getTransition(speed);
+    let shouldAnimate = true;
+    if (!this.prevLatLng) {
+      shouldAnimate = false;
+    } else {
+      // A bus shouldn't travel 100 meters in a second...
+      const dist = this._map.distance(this.prevLatLng, this.latLng);
+      if (dist > 100) shouldAnimate = false;
     }
-    if (this._shadow) { this._shadow.style[L.DomUtil.TRANSITION] = getTransition(speed); }
+
+    if (shouldAnimate) {
+      const speed = this.options.interval;
+
+      if (this._icon) {
+        this._icon.style.opacity = 1;
+        this._icon.style[L.DomUtil.TRANSITION] = getTransition(speed);
+      }
+      if (this._shadow) { this._shadow.style[L.DomUtil.TRANSITION] = getTransition(speed); }
+    } else {
+      this.disableAnim();
+    }
   },
 
   setLine: function(latLng, instant){
     this.prevLatLng = this.latLng
     this.latLng = latLng
-    this.animate(instant);
+    this.animate();
   }
 });
 
