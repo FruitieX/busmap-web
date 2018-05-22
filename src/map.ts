@@ -28,22 +28,25 @@ export default () => {
   const lc = (<any>control).locate({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
-    keepCurrentZoomLevel: true,
+    //keepCurrentZoomLevel: true,
     onLocationError: (err: Error) => console.log(err.message),
   	locateOptions: {
   		enableHighAccuracy: true,
+      maxZoom: 14
   	}
   }).addTo(map);
 
   lc.start();
 
-  // Stop following user location if they zoom in/out
-  map.on('zoomstart', () => {
-    if (lc._active) {
-      lc._userPanned = true;
-      lc._updateContainerStyle();
-      lc._drawMarker();
-    }
+  map.once('locationfound', () => {
+    // Stop following user location if they zoom in/out
+    map.on('zoomstart', () => {
+      if (lc._active) {
+        lc._userPanned = true;
+        lc._updateContainerStyle();
+        lc._drawMarker();
+      }
+    });
   });
 
   const githubControl = Control.extend({
