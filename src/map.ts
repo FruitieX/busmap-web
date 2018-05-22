@@ -2,10 +2,10 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.locatecontrol';
 import 'leaflet.locatecontrol/dist/L.Control.Locate.min.css';
 import './AnimatedMarker';
-import '../fontello-b738a398/css/fontello.css';
-import '../fontello-b738a398/css/animation.css';
+import './fontello/css/fontello.css';
+import './fontello/css/animation.css';
 
-import { map as LeafletMap, tileLayer, control } from 'leaflet';
+import { map as LeafletMap, tileLayer, control, Control, DomUtil } from 'leaflet';
 
 export default () => {
   // Initialize the map
@@ -45,6 +45,27 @@ export default () => {
       lc._drawMarker();
     }
   });
+
+  const githubControl = Control.extend({
+    options: {
+      position: 'bottomleft',
+    },
+
+    onAdd: function(map: LeafletMap) {
+      const container = DomUtil.create('div', 'leaflet-bar leaflet-control');
+      container.style.backgroundColor = 'white';
+      container.style.width = '30px';
+      container.style.height = '30px';
+      container.style.fontSize = '1.4em';
+      container.style.lineHeight = '30px';
+      container.style.textAlign = 'center';
+      container.innerHTML = '<a target="_blank" href="https://github.com/FruitieX/busmap-web"><span class="icon-github-circled"></span></a>';
+
+      return container;
+    }
+  });
+
+  map.addControl(new githubControl());
 
   return map;
 };
