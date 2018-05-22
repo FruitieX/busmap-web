@@ -1,7 +1,9 @@
-busmap-leaflet
-==============
+busmap-web
+==========
 
-Rewrite of busmap using Leaflet
+Rewrite of busmap using [Leaflet](https://leafletjs.com/), with a focus on speed.
+
+Live: https://busmap.surge.sh
 
 Setup (development)
 -------------------

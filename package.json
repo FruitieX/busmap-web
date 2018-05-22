@@ -6,7 +6,7 @@
   "scripts": {
     "start": "parcel src/index.html",
     "build": "parcel build src/index.html && workbox generateSW workbox-config.js",
-    "deploy": "rm -rf dist && npm run build && surge -d busmap-leaflet.surge.sh dist"
+    "deploy": "rm -rf dist && npm run build && surge -d busmap.surge.sh dist"
   },
   "devDependencies": {
     "@types/leaflet": "^1.2.7",
