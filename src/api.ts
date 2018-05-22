@@ -57,9 +57,11 @@ const initApi = () => {
   fetchRoutes().then(async (_routes: ApiRoute[]) => {
     // Replace routes but remember old polyline if present
     _routes.forEach(route => {
+      const existingRoute = routes[route.gtfsId];
+
       routes[route.gtfsId] = {
         ...route,
-        polyline: routes[route.gtfsId].polyline
+        polyline: existingRoute ? existingRoute.polyline : undefined
       };
     });
 

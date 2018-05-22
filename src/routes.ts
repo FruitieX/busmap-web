@@ -224,8 +224,6 @@ const updateRoutes = (map: Map) => (routes: Route[]) => {
     seenRoute.polyline && seenRoute.polyline.remove();
   })
 
-  console.log(routes);
-
   routes.forEach(route => {
     const line = initPolyline(map, route);
     //const control = new routeControl(route);
