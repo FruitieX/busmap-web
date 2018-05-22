@@ -16,16 +16,21 @@ L.AnimatedMarker = L.Marker.extend({
   },
 
   zooming: false,
+  zoomEndTimeout: null,
 
   zoomStart: function() {
+    clearTimeout(this.zoomEndTimeout);
     this.zooming = true;
     if (this._icon) { this._icon.style[L.DomUtil.TRANSITION] = ''; }
     if (this._shadow) { this._shadow.style[L.DomUtil.TRANSITION] = ''; }
   },
 
   zoomEnd: function() {
-    this.zooming = false;
-    this.animate();
+    // FIXME: use requestAnimationFrame() or similar instead of this hack?
+    this.zoomEndTimeout = setTimeout(() => {
+      this.zooming = false;
+      this.animate();
+    }, 20);
   },
 
   onAdd: function (map) {
