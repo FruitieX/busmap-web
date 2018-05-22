@@ -55,17 +55,23 @@ const initApi = () => {
   });
 
   fetchRoutes().then(async (_routes: ApiRoute[]) => {
+    // Replace routes but remember old polyline if present
     _routes.forEach(route => {
-      routes[route.gtfsId] = route;
+      routes[route.gtfsId] = {
+        ...route,
+        polyline: routes[route.gtfsId].polyline
+      };
     });
 
-    localStorage.setItem("routes", JSON.stringify(routes));
-
+    // Immediately dispatch a updateRoutes with cached routes
     const subscribedRoutes = subscriptions.map(gtfsId => routes[gtfsId]);
     apiEvents.emit('updateRoutes', subscribedRoutes);
+
+    // Then fetch up to date routes and replace routes with these once done
     const polylines = await fetchPolylines(subscriptions);
     subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
     apiEvents.emit('updateRoutes', subscribedRoutes);
+    localStorage.setItem("routes", JSON.stringify(routes));
   });
 
   return apiEvents;
@@ -113,6 +119,7 @@ export const subscribe = (gtfsId: string, unsubscribe = false, disableStorage = 
         const polylines = await fetchPolylines(subscriptions);
         subscribedRoutes.forEach(route => route.polyline = polylines[route.gtfsId]);
         apiEvents.emit('updateRoutes', subscribedRoutes);
+        localStorage.setItem("routes", JSON.stringify(routes));
       });
     } catch(e) {
       console.log('error while subscribing:', e);
