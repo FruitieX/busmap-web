@@ -12,6 +12,7 @@ interface SeenVehicle {
   vehicle: Vehicle
 };
 const seenVehicles: { [vehicleId: string]: SeenVehicle } = {};
+const getVehicleId = (v: Vehicle) => `${v.gtfsId}/${v.veh}`;
 
 const getBackgroundColor = (gtfsId: string) => {
   const subscriptions = getSubscriptions();
@@ -27,7 +28,7 @@ const updatePopup = (popup: Popup, v: Vehicle) => {
   <span class="icon-bus"></span>
   ${v.desi} (${v.dest})
 </div>
-<div class="dest">Vehicle ID: ${v.veh}</div>
+<div class="dest">Vehicle ID: ${v.gtfsId}/${v.veh}</div>
 <div class="dest">Last update: ${new Date(v.lastUpdate).toLocaleTimeString()}</div>
 <div class="dest">Start time: ${v.start}</div>
 <div class="dest">Speed: ${Number(v.spd * 3.6).toFixed(2)} km/h</div>
@@ -54,7 +55,7 @@ const iconHtml = (v: Vehicle) => {
 };
 
 const removeVehicle = (map: Map) => (v: SeenVehicle) => {
-  console.log('removing vehicle', v.vehicle.veh);
+  console.log('removing vehicle', getVehicleId(v.vehicle));
   clearTimeout(v.timeout);
   if (v.marker) {
     map.removeLayer(v.marker);
@@ -63,7 +64,7 @@ const removeVehicle = (map: Map) => (v: SeenVehicle) => {
 };
 
 const updateVehicle = (map: Map) => (v: Vehicle) => {
-  let seenVehicle = seenVehicles[v.veh];
+  let seenVehicle = seenVehicles[getVehicleId(v)];
 
   if (!seenVehicle) {
     // Vehicle not seen before, create new icon & marker
@@ -76,7 +77,7 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
       timeout: 0,
     };
     seenVehicle.timeout = setTimeout(() => removeVehicle(map)(seenVehicle), 10000);
-    seenVehicles[v.veh] = seenVehicle;
+    seenVehicles[getVehicleId(v)] = seenVehicle;
   } else {
     // Vehicle seen before, update marker
     if (v.latLng) {
@@ -92,7 +93,7 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
         seenVehicle.marker._icon.innerHTML = iconHtml(v);
         updatePopup(seenVehicle.marker._popup, v);
       }
-    } else if (!v.latLng && seenVehicle.marker) {
+    } else {
       removeVehicle(map)(seenVehicle)
     }
   }
@@ -101,10 +102,7 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
 const removeRoute = (map: Map) => (r: Route) => {
   Object.values(seenVehicles).forEach(seenVehicle => {
     if (seenVehicle.vehicle.gtfsId === r.gtfsId) {
-      if (seenVehicle.marker) {
-        map.removeLayer(seenVehicle.marker);
-        delete seenVehicles[seenVehicle.vehicle.veh];
-      }
+      removeVehicle(map)(seenVehicle);
     }
   });
 };
