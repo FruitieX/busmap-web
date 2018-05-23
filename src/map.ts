@@ -15,20 +15,25 @@ export default () => {
   // Set the position and zoom level of the map
   map.setView([60.17, 24.95], 13);
 
-  const tileServer = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+  const tileServer = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{retina}.png';
   //const tileServer = 'http://{s}.tile.osm.org/{z}/{x}/{y}.png';
 
   // Initialize the base layer
   tileLayer(tileServer, {
-  	maxZoom: 19,
-    attribution: `v${pkg.version} | &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | <a href="https://carto.com/location-data-services/basemaps/">CartoDB</a> | <a href="https://digitransit.fi/en/developers/apis/4-realtime-api/vehicle-positions/">Digitransit</a>`
+  	maxZoom: 18,
+    maxNativeZoom: 18,
+    attribution: `v${pkg.version} | &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | <a href="https://carto.com/location-data-services/basemaps/">CartoDB</a> | <a href="https://digitransit.fi/en/developers/apis/4-realtime-api/vehicle-positions/">Digitransit</a>`,
   	//attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    retina: '@2x',
+    worldCopyJump: true,
+    detectRetina: true,
   }).addTo(map);
 
   // control contains more stuff than what is in the typedefs
   const lc = (<any>control).locate({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
+    setView: 'once',
     //keepCurrentZoomLevel: true,
     onLocationError: (err: Error) => console.log(err.message),
   	locateOptions: {
@@ -39,6 +44,7 @@ export default () => {
 
   lc.start();
 
+  /*
   map.once('locationfound', () => {
     // Stop following user location if they zoom in/out
     map.on('zoomstart', () => {
@@ -49,6 +55,7 @@ export default () => {
       }
     });
   });
+  */
 
   const githubControl = Control.extend({
     options: {
