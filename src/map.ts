@@ -15,7 +15,7 @@ export default () => {
   // Set the position and zoom level of the map
   map.setView([60.17, 24.95], 13);
 
-  const tileServer = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{retina}.png';
+  const tileServer = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
   //const tileServer = 'http://{s}.tile.osm.org/{z}/{x}/{y}.png';
 
   // Initialize the base layer
@@ -24,9 +24,6 @@ export default () => {
     maxNativeZoom: 18,
     attribution: `v${pkg.version} | &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | <a href="https://carto.com/location-data-services/basemaps/">CartoDB</a> | <a href="https://digitransit.fi/en/developers/apis/4-realtime-api/vehicle-positions/">Digitransit</a>`,
   	//attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    retina: '@2x',
-    worldCopyJump: true,
-    detectRetina: true,
   }).addTo(map);
 
   // control contains more stuff than what is in the typedefs
