@@ -31,6 +31,10 @@ export default () => {
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
     setView: 'once',
+    clickBehavior: {
+      inView: 'setView',
+      outOfView: 'setView'
+    },
     //keepCurrentZoomLevel: true,
     onLocationError: (err: Error) => console.log(err.message),
   	locateOptions: {
