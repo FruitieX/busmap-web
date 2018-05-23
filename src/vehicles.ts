@@ -8,6 +8,7 @@ import EventEmitter from 'eventemitter3';
 interface SeenVehicle {
   icon: DivIcon,
   marker?: Marker,
+  timeout: number,
   vehicle: Vehicle
 };
 const seenVehicles: { [vehicleId: string]: SeenVehicle } = {};
@@ -52,21 +53,37 @@ const iconHtml = (v: Vehicle) => {
   return `<div class="routeId"><span class="icon-bus"></span>${v.desi}</div><div class="dest">${v.dest}</div>`;
 };
 
+const removeVehicle = (map: Map) => (v: SeenVehicle) => {
+  console.log('removing vehicle', v.vehicle.veh);
+  clearTimeout(v.timeout);
+  if (v.marker) {
+    map.removeLayer(v.marker);
+    delete v.marker;
+  }
+};
+
 const updateVehicle = (map: Map) => (v: Vehicle) => {
-  const seenVehicle = seenVehicles[v.veh];
+  let seenVehicle = seenVehicles[v.veh];
 
   if (!seenVehicle) {
     // Vehicle not seen before, create new icon & marker
   	const icon = divIcon({ className: 'vehicle', iconSize: [50, 25], html: iconHtml(v) });
 
-    seenVehicles[v.veh] = {
+    seenVehicle = {
       icon,
       marker: v.latLng && initMarker(map, v, icon),
-      vehicle: v
+      vehicle: v,
+      timeout: 0,
     };
+    seenVehicle.timeout = setTimeout(() => removeVehicle(map)(seenVehicle), 10000);
+    seenVehicles[v.veh] = seenVehicle;
   } else {
     // Vehicle seen before, update marker
     if (v.latLng) {
+      // First reset vehicle timeout
+      clearTimeout(seenVehicle.timeout);
+      seenVehicle.timeout = setTimeout(() => removeVehicle(map)(seenVehicle), 10000);
+
       if (!seenVehicle.marker) {
         seenVehicle.marker = initMarker(map, v, seenVehicle.icon);
       } else {
@@ -76,9 +93,7 @@ const updateVehicle = (map: Map) => (v: Vehicle) => {
         updatePopup(seenVehicle.marker._popup, v);
       }
     } else if (!v.latLng && seenVehicle.marker) {
-      // Api supplied null coordinates, remove marker
-      map.removeLayer(seenVehicle.marker);
-      delete seenVehicle.marker;
+      removeVehicle(map)(seenVehicle)
     }
   }
 };
