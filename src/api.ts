@@ -16,7 +16,9 @@ const initApi = () => {
     let vehicle: Vehicle | undefined = undefined;
 
     try {
-      const apiVehicle: ApiVehicle = JSON.parse(message.toString()).VP;
+      const apiVehicle: ApiVehicle | undefined = JSON.parse(message.toString()).VP;
+
+      if (!apiVehicle) return;
 
       let ll: LatLng | undefined;
       if (apiVehicle.lat && apiVehicle.long) {
@@ -88,7 +90,7 @@ export const subscribe = (gtfsId: string, unsubscribe = false, disableStorage = 
       if (!match) throw new Error('invalid gtfsId');
 
       const [trash, mqttLineId] = match;
-      const topic = `/hfp/v1/journey/+/+/+/+/${mqttLineId}/#`
+      const topic = `/hfp/v2/journey/+/+/+/+/+/${mqttLineId}/#`
 
       if (unsubscribe) {
         console.log('unsubscribing from', topic);
