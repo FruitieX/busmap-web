@@ -110,7 +110,9 @@ const removeRoute = (map: Map) => (r: Route) => {
 const updateRoutes = (map: Map) => (r: Route[]) => {
   Object.values(seenVehicles).forEach(seenVehicle => {
     if (r.find(route => route.gtfsId === seenVehicle.vehicle.gtfsId)) {
-      seenVehicle.marker && seenVehicle.marker._icon.style.backgroundColor = getBackgroundColor(seenVehicle.vehicle.gtfsId);
+      if (seenVehicle.marker) {
+        seenVehicle.marker._icon.style.backgroundColor = getBackgroundColor(seenVehicle.vehicle.gtfsId);
+      }
     }
   });
 };

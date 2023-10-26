@@ -161,7 +161,8 @@ const fetchRoutes = () => {
       const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/graphql'
+          'Content-Type': 'application/graphql',
+          'digitransit-subscription-key': '4cbdb9befb8d4161b8cd95234b823bda'
         },
         body: allRoutesQuery
       })
@@ -226,7 +227,8 @@ const fetchPolylines = (gtfsIdLines: string[]) => {
       const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/graphql'
+          'Content-Type': 'application/graphql',
+          'digitransit-subscription-key': '4cbdb9befb8d4161b8cd95234b823bda'
         },
         body: query
       })
