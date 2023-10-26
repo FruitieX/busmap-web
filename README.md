@@ -3,17 +3,17 @@ busmap-web
 
 Rewrite of busmap using [Leaflet](https://leafletjs.com/), with a focus on speed.
 
-Live: https://busmap.surge.sh
+Live: https://busmap.netlify.app
 
 Setup (development)
 -------------------
 
-1. yarn
-2. yarn start
+1. npm install
+2. npm start
 
 Setup (production)
 ------------------
 
-1. Edit the domain set in the deploy script (in package.json)
-2. yarn
-3. yarn deploy
+1. npm install
+2. npm run build
+3. npx static dist
