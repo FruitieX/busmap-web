@@ -9,7 +9,7 @@
   "devDependencies": {
     "@parcel/packager-raw-url": "2.12.0",
     "@parcel/transformer-webmanifest": "2.12.0",
-    "@types/leaflet": "1.9.9",
+    "@types/leaflet": "1.9.11",
     "parcel": "2.12.0",
     "typescript": "5.4.5",
     "url": "0.11.3",
