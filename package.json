@@ -13,7 +13,7 @@
     "parcel": "2.12.0",
     "typescript": "5.4.5",
     "url": "0.11.3",
-    "workbox-cli": "7.0.0"
+    "workbox-cli": "7.1.0"
   },
   "dependencies": {
     "eventemitter3": "5.0.1",
