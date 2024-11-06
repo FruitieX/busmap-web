@@ -1,4 +1,5 @@
 import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 import 'leaflet.locatecontrol';
 import 'leaflet.locatecontrol/dist/L.Control.Locate.min.css';
 import './AnimatedMarker';
@@ -27,7 +28,7 @@ export default () => {
   }).addTo(map);
 
   // control contains more stuff than what is in the typedefs
-  const lc = (<any>control).locate({
+  const lc = L.control.locate({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
     setView: 'once',
@@ -36,7 +37,7 @@ export default () => {
       outOfView: 'setView'
     },
     //keepCurrentZoomLevel: true,
-    onLocationError: (err: Error) => console.log(err.message),
+    // onLocationError: (err: Error) => console.log(err.message),
   	locateOptions: {
   		enableHighAccuracy: true,
       maxZoom: 14
@@ -44,7 +45,7 @@ export default () => {
   }).addTo(map);
 
   // Needed to make setView: 'once' work after programmatic .start() invocation
-  lc._justClicked = true;
+  // lc._justClicked = true;
 
   lc.start();
 
@@ -66,7 +67,7 @@ export default () => {
       position: 'topright',
     },
 
-    onAdd: function(map: LeafletMap) {
+    onAdd: function(map: typeof LeafletMap) {
       const container = DomUtil.create('a', 'leaflet-bar leaflet-control');
       container.title = "Fork me on GitHub";
       container.style.backgroundColor = 'white';
