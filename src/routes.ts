@@ -203,7 +203,7 @@ const initPolyline = (map: Map, r: Route) => {
 
   const hue = indexToHue(subscriptionIndex, subscriptions.length);
   const color = `hsla(${hue}, 70%, 42%, 0.75)`;
-  const line = polyline(r.polyline, {color, weight: 6, dashArray: '8, 20'}).addTo(map);
+  const line = polyline(r.polyline, { dashOffset: String(subscriptionIndex * 8), color, weight: 4, dashArray: '8, 16'}).addTo(map);
 
   const p =
   popup({ autoPanPadding: new Point(50, 50), className: 'popup', offset: new Point(0, -10) })
