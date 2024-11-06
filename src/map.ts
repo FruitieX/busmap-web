@@ -45,7 +45,7 @@ export default () => {
   }).addTo(map);
 
   // Needed to make setView: 'once' work after programmatic .start() invocation
-  // lc._justClicked = true;
+  (lc as any)._justClicked = true;
 
   lc.start();
 
