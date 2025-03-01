@@ -1,13 +1,14 @@
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import 'leaflet.locatecontrol';
 import 'leaflet.locatecontrol/dist/L.Control.Locate.min.css';
+import L from 'leaflet';
 import './AnimatedMarker';
 import './fontello/css/fontello.css';
 import './fontello/css/animation.css';
 import pkg from '../package.json';
 
 import { map as LeafletMap, tileLayer, control, Control, DomUtil } from 'leaflet';
+import { LocateControl } from 'leaflet.locatecontrol';
 
 export default () => {
   // Initialize the map
@@ -28,7 +29,7 @@ export default () => {
   }).addTo(map);
 
   // control contains more stuff than what is in the typedefs
-  const lc = L.control.locate({
+  const lc = new LocateControl({
   	icon: 'icon-location',
   	iconLoading: 'icon-spinner animate-spin',
     setView: 'once',
@@ -42,7 +43,9 @@ export default () => {
   		enableHighAccuracy: true,
       maxZoom: 14
   	}
-  }).addTo(map);
+  })
+    
+  lc.addTo(map);
 
   // Needed to make setView: 'once' work after programmatic .start() invocation
   (lc as any)._justClicked = true;
