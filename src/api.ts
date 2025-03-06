@@ -158,7 +158,7 @@ const allRoutesQuery =
 const fetchRoutes = () => {
   const doFetch = async (callback: Function) => {
     try {
-      const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
+      const response = await fetch('https://api.digitransit.fi/routing/v2/hsl/gtfs/v1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/graphql',
@@ -224,7 +224,7 @@ const fetchPolylines = (gtfsIdLines: string[]) => {
     try {
       console.log('fetching polylines for gtfsIds:', JSON.stringify(gtfsIdLines));
       const query = polylineQuery(`["${gtfsIdLines.join('","')}"]`);
-      const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
+      const response = await fetch('https://api.digitransit.fi/routing/v2/hsl/gtfs/v1', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/graphql',
