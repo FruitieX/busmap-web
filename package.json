@@ -19,7 +19,7 @@
     "@types/leaflet.locatecontrol": "0.82.0",
     "eventemitter3": "5.0.1",
     "leaflet": "1.9.4",
-    "leaflet.locatecontrol": "0.83.1",
+    "leaflet.locatecontrol": "0.84.1",
     "mqtt": "5.2.0"
   }
 }
