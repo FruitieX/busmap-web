@@ -7,10 +7,10 @@
     "build": "parcel build src/index.html && workbox generateSW workbox-config.js"
   },
   "devDependencies": {
-    "@parcel/packager-raw-url": "2.15.2",
-    "@parcel/transformer-webmanifest": "2.15.2",
+    "@parcel/packager-raw-url": "2.15.4",
+    "@parcel/transformer-webmanifest": "2.15.4",
     "@types/leaflet": "1.9.18",
-    "parcel": "2.15.2",
+    "parcel": "2.15.4",
     "typescript": "5.8.3",
     "url": "0.11.4",
     "workbox-cli": "7.3.0"
