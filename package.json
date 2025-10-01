@@ -11,7 +11,7 @@
     "@parcel/transformer-webmanifest": "2.16.0",
     "@types/leaflet": "1.9.20",
     "parcel": "2.16.0",
-    "typescript": "5.9.2",
+    "typescript": "5.9.3",
     "url": "0.11.4",
     "workbox-cli": "7.3.0"
   },
