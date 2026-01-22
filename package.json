@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@types/leaflet.locatecontrol": "0.85.1",
-    "eventemitter3": "5.0.1",
+    "eventemitter3": "5.0.4",
     "leaflet": "1.9.4",
     "leaflet.locatecontrol": "0.86.0",
     "mqtt": "5.2.0"
