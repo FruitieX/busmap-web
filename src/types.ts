@@ -1,39 +1,140 @@
-import { LatLng } from "leaflet";
+// Transport modes supported by HSL
+export type TransportMode = 'bus' | 'tram' | 'train' | 'ferry' | 'metro' | 'ubus' | 'robot';
 
-export interface ApiRoute {
-  gtfsId: string;
-  longName: string;
-  shortName: string;
+// Color mapping for transport modes
+export const TRANSPORT_COLORS: Record<TransportMode, string> = {
+  bus: '#007ac9',
+  tram: '#00985f',
+  train: '#8c4799',
+  ferry: '#00b9e4',
+  metro: '#ff6319',
+  ubus: '#999999',
+  robot: '#999999',
 };
 
-export interface ApiVehicle {
-  acc: number;
-  desi: string;
-  dir: string;
-  dl: number;
-  drst: number;
-  hdg: number;
-  jrn: number;
-  lat?: number;
-  long?: number;
-  line: number;
-  oday: string;
-  odo: number;
-  oper: number;
-  spd: number;
-  start: string;
-  tsi: number;
-  tst: string;
-  veh: number;
+// Route from Digitransit API
+export interface Route {
+  gtfsId: string;
+  shortName: string;
+  longName: string;
+  mode?: TransportMode;
+  color?: string;
 }
 
-export interface Route extends ApiRoute {
-  polyline?: LatLng[]
-};
-
-export interface Vehicle extends ApiVehicle {
-  lastUpdate: number;
-  latLng?: LatLng;
-  dest: string;
+// Pattern/variant of a route
+export interface RoutePattern {
   gtfsId: string;
-};
+  name: string;
+  geometry: Array<{ lat: number; lon: number }>;
+}
+
+// Subscribed route with metadata
+export interface SubscribedRoute {
+  gtfsId: string;
+  shortName: string;
+  longName: string;
+  mode: TransportMode;
+  color: string;
+  subscribedAt: number;
+}
+
+// Vehicle position from MQTT HFP message
+export interface VehiclePosition {
+  // Vehicle identification
+  vehicleId: string; // operator_id/vehicle_number
+  operatorId: number;
+  vehicleNumber: number;
+
+  // Position
+  lat: number;
+  lng: number;
+  heading: number;
+  speed: number; // m/s
+  acceleration: number; // m/s²
+
+  // Trip info
+  routeId: string; // e.g., "2551"
+  routeShortName: string; // e.g., "551"
+  direction: 1 | 2;
+  headsign: string;
+  startTime: string; // HH:mm
+  operatingDay: string; // YYYY-MM-DD
+
+  // Status
+  delay: number; // seconds, negative = early
+  nextStopId: string | null;
+  doorStatus: 0 | 1;
+  occupancy: number; // 0-100
+
+  // Timestamps
+  timestamp: Date;
+  receivedAt: Date;
+
+  // Transport mode
+  mode: TransportMode;
+}
+
+// Tracked vehicle with animation state
+export interface TrackedVehicle extends VehiclePosition {
+  // Previous position for animation
+  prevLat?: number;
+  prevLng?: number;
+  prevHeading?: number;
+
+  // Animation timestamp
+  animationStart?: number;
+
+  // Is this from a subscribed route or nearby discovery?
+  isSubscribed: boolean;
+
+  // Stale timeout
+  lastUpdate: number;
+
+  // Exit animation timestamp (set when vehicle should fade out)
+  exitingAt?: number;
+}
+
+// Bounding box for nearby mode
+export interface BoundingBox {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+// App settings
+export interface Settings {
+  showNearby: boolean;
+  nearbyRadius: number; // meters
+  theme: 'light' | 'dark' | 'system';
+  showRouteLines: boolean;
+  animateVehicles: boolean;
+  developerMode: boolean;
+}
+
+// Map viewport state
+export interface MapViewport {
+  latitude: number;
+  longitude: number;
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+// User location
+export interface UserLocation {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+}
+
+// Connection status
+export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
+// MQTT subscription
+export interface MqttSubscription {
+  topic: string;
+  routeId?: string;
+  geohash?: string;
+}
