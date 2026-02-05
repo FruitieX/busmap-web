@@ -59,7 +59,7 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 10 }}
-      className="relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-3 min-w-[220px] pointer-events-auto mb-4"
+      className="relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[180px] sm:min-w-[220px] pointer-events-auto mb-3 sm:mb-4"
     >
       {/* Arrow pointing down */}
       <div className="absolute left-1/2 -bottom-2 -translate-x-1/2">
@@ -67,18 +67,18 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
       </div>
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
         <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0"
           style={{ backgroundColor: color }}
         >
           {route.shortName}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-900 dark:text-white truncate">
+          <div className="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
             {route.longName || `Route ${route.shortName}`}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 capitalize">
             {route.mode}
           </div>
         </div>
@@ -93,27 +93,27 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-2 text-center mb-3">
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
-          <div className="text-lg font-semibold text-gray-900 dark:text-white">{stats.activeVehicles}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Vehicles</div>
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center mb-2 sm:mb-3">
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-1.5 sm:p-2">
+          <div className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">{stats.activeVehicles}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Vehicles</div>
         </div>
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
-          <div className="text-lg font-semibold text-gray-900 dark:text-white">{stats.directions}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Directions</div>
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-1.5 sm:p-2">
+          <div className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">{stats.directions}</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Directions</div>
         </div>
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2">
-          <div className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-1.5 sm:p-2">
+          <div className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
             {stats.routeLength > 0 ? formatDistance(stats.routeLength) : '—'}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Length</div>
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Length</div>
         </div>
       </div>
 
       {/* Unsubscribe button */}
       <button
         onClick={onUnsubscribe}
-        className="w-full py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+        className="w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
       >
         Stop tracking route
       </button>

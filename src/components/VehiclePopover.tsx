@@ -69,7 +69,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
       initial={{ opacity: 0, scale: 0.9, y: isAbove ? 10 : -10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: isAbove ? 10 : -10 }}
-      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-3 min-w-[200px] pointer-events-auto ${isAbove ? 'mb-4' : 'mt-4'}`}
+      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[160px] sm:min-w-[200px] pointer-events-auto ${isAbove ? 'mb-3 sm:mb-4' : 'mt-3 sm:mt-4'}`}
     >
       {/* Arrow pointing to vehicle */}
       {isAbove ? (
@@ -83,18 +83,18 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
         <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0"
           style={{ backgroundColor: color }}
         >
           {vehicle.routeShortName}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-900 dark:text-white truncate">
+          <div className="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
             {vehicle.headsign || 'Unknown destination'}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+          <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 capitalize">
             {vehicle.mode} • Vehicle {vehicle.vehicleNumber}
           </div>
         </div>
@@ -109,7 +109,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
       </div>
 
       {/* Stats */}
-      <div className="flex items-center gap-4 text-sm mb-3">
+      <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm mb-2 sm:mb-3">
         <span className={delayClass}>{formatDelay(vehicle.delay)}</span>
         <span className="text-gray-400">•</span>
         <span className="text-gray-600 dark:text-gray-400">{formatSpeed(vehicle.speed)}</span>
@@ -174,7 +174,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
       {/* Subscribe button */}
       <button
         onClick={isSubscribed ? onUnsubscribe : onSubscribe}
-        className={`w-full py-2 rounded-lg text-sm font-medium transition-colors ${
+        className={`w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
           isSubscribed
             ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
             : 'text-white hover:opacity-90'

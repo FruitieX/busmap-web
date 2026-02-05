@@ -12,6 +12,27 @@ import type { FeatureCollection, LineString, Polygon } from 'geojson';
 // Free OpenStreetMap-based tile style
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
+// Popover height based on screen width (matches Tailwind sm: breakpoint at 640px)
+const getPopoverHeight = (screenWidth: number) => screenWidth < 640 ? 170 : 200;
+
+// Compute bounding box from route patterns
+const computeRouteBounds = (routePatterns: RoutePattern[]): [[number, number], [number, number]] | null => {
+  let minLng = Infinity, maxLng = -Infinity;
+  let minLat = Infinity, maxLat = -Infinity;
+
+  for (const pattern of routePatterns) {
+    for (const point of pattern.geometry) {
+      minLng = Math.min(minLng, point.lon);
+      maxLng = Math.max(maxLng, point.lon);
+      minLat = Math.min(minLat, point.lat);
+      maxLat = Math.max(maxLat, point.lat);
+    }
+  }
+
+  if (minLng === Infinity) return null;
+  return [[minLng, minLat], [maxLng, maxLat]];
+};
+
 interface BusMapProps {
   patterns?: Map<string, RoutePattern[]>;
   onVehicleClick?: (vehicle: TrackedVehicle) => void;
@@ -117,59 +138,37 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   }, [selectedVehicle]);
 
   // Auto-follow selected vehicle when it approaches screen edge
-  // Accounts for popover height (~200px) based on anchor position
-  const POPOVER_HEIGHT = 200;
-  
-  // Track if map is currently animating to prevent stacking animations
   const isAnimatingRef = useRef(false);
   
   useEffect(() => {
     if (!selectedVehiclePosition || !mapRef.current) return;
-    
-    // Skip if already animating to prevent animation queue buildup
     if (isAnimatingRef.current) return;
 
     const map = mapRef.current.getMap();
-    if (!map) return;
-    
-    // Check if map is in a good state
-    if (!map.loaded()) return;
+    if (!map || !map.loaded()) return;
 
-    // Get map container bounds
     const container = map.getContainer();
     const { width, height } = container.getBoundingClientRect();
-    if (width === 0 || height === 0) return; // Map not yet rendered
+    if (width === 0 || height === 0) return;
 
+    const popoverHeight = getPopoverHeight(width);
     const point = map.project([selectedVehiclePosition.lng, selectedVehiclePosition.lat]);
-    
-    // Guard against NaN from project (can happen during map initialization)
     if (!isFinite(point.x) || !isFinite(point.y)) return;
 
-    // Define edge margins - account for popover position
     const marginX = width * 0.2;
-    // If popover is above (anchor=bottom), need more margin at top for popover
-    // If popover is below (anchor=top), need more margin at bottom for popover + sheet
-    const marginTop = vehiclePopoverAnchor === 'bottom' ? POPOVER_HEIGHT + 60 : 80;
-    const marginBottom = vehiclePopoverAnchor === 'top' ? bottomPadding + POPOVER_HEIGHT + 40 : bottomPadding + 40;
+    const marginTop = vehiclePopoverAnchor === 'bottom' ? popoverHeight + 60 : 80;
+    const marginBottom = vehiclePopoverAnchor === 'top' ? bottomPadding + popoverHeight + 40 : bottomPadding + 40;
 
-    // Check if vehicle is outside safe zone and calculate offset to bring it just inside
     let offsetX = 0;
     let offsetY = 0;
 
-    if (point.x < marginX) {
-      offsetX = point.x - marginX; // negative - pan left
-    } else if (point.x > width - marginX) {
-      offsetX = point.x - (width - marginX); // positive - pan right
-    }
+    if (point.x < marginX) offsetX = point.x - marginX;
+    else if (point.x > width - marginX) offsetX = point.x - (width - marginX);
 
-    if (point.y < marginTop) {
-      offsetY = point.y - marginTop; // negative - pan up
-    } else if (point.y > height - marginBottom) {
-      offsetY = point.y - (height - marginBottom); // positive - pan down
-    }
+    if (point.y < marginTop) offsetY = point.y - marginTop;
+    else if (point.y > height - marginBottom) offsetY = point.y - (height - marginBottom);
 
     if (offsetX !== 0 || offsetY !== 0) {
-      // Pan by the offset amount (just enough to bring vehicle within bounds)
       map.panBy([offsetX, offsetY], { duration: 500 });
     }
   }, [selectedVehiclePosition?.lng, selectedVehiclePosition?.lat, bottomPadding, vehiclePopoverAnchor]);
@@ -219,22 +218,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     const routePatterns = patterns.get(selectedRouteId);
     if (!routePatterns || routePatterns.length === 0) return null;
 
-    // Calculate route bounds
-    let minLng = Infinity, maxLng = -Infinity;
-    let minLat = Infinity, maxLat = -Infinity;
+    const bounds = computeRouteBounds(routePatterns);
+    if (!bounds) return null;
 
-    for (const pattern of routePatterns) {
-      for (const point of pattern.geometry) {
-        minLng = Math.min(minLng, point.lon);
-        maxLng = Math.max(maxLng, point.lon);
-        minLat = Math.min(minLat, point.lat);
-        maxLat = Math.max(maxLat, point.lat);
-      }
-    }
-
-    if (minLng === Infinity) return null;
-
-    // Position at center X, top Y (with anchor at bottom so popover appears above)
+    const [[minLng, _minLat], [maxLng, maxLat]] = bounds;
     return {
       lng: (minLng + maxLng) / 2,
       lat: maxLat,
@@ -316,34 +303,71 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     }
   }, [selectedVehicleId, selectedVehicle, onVehicleSelect]);
 
-  // Fit bounds to selected route - accounts for popover at top
-  useEffect(() => {
-    if (!selectedRouteId || !patterns || !mapRef.current) return;
+  // Helper to fit map to route bounds with popover padding
+  const fitRouteBounds = useCallback((routePatterns: RoutePattern[]) => {
+    if (!mapRef.current) return;
     
-    const routePatterns = patterns.get(selectedRouteId);
-    if (!routePatterns || routePatterns.length === 0) return;
-
-    // Calculate bounds from all pattern geometries
-    let minLng = Infinity, maxLng = -Infinity;
-    let minLat = Infinity, maxLat = -Infinity;
-
-    for (const pattern of routePatterns) {
-      for (const point of pattern.geometry) {
-        minLng = Math.min(minLng, point.lon);
-        maxLng = Math.max(maxLng, point.lon);
-        minLat = Math.min(minLat, point.lat);
-        maxLat = Math.max(maxLat, point.lat);
-      }
+    const bounds = computeRouteBounds(routePatterns);
+    if (!bounds) return;
+    
+    const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+    if (!isFinite(minLng) || !isFinite(minLat) || !isFinite(maxLng) || !isFinite(maxLat)) {
+      return;
     }
 
-    if (minLng === Infinity) return;
+    const map = mapRef.current.getMap();
+    if (!map) return;
 
-    // Large top padding for popover which appears at top of route
-    mapRef.current.fitBounds(
-      [[minLng, minLat], [maxLng, maxLat]],
-      { padding: { top: POPOVER_HEIGHT + 80, left: 40, right: 40, bottom: bottomPadding + 40 }, duration: 1000 }
-    );
-  }, [selectedRouteId, patterns, bottomPadding]);
+    const container = map.getContainer();
+    const { width, height } = container.getBoundingClientRect();
+    if (width === 0 || height === 0) return;
+    
+    const popoverHeight = getPopoverHeight(width);
+
+    console.log(bottomPadding);
+    const padding = {
+      top: popoverHeight + 40 + 10,
+      bottom: bottomPadding / 2 - 100,
+      left: 10,
+      right: 10,
+    };
+
+
+    try {
+      isAnimatingRef.current = true;
+      mapRef.current.fitBounds(bounds, { 
+        padding, 
+        duration: 1000,
+      });
+      setTimeout(() => { isAnimatingRef.current = false; }, 1000);
+    } catch {
+      isAnimatingRef.current = false;
+    }
+  }, [bottomPadding]);
+
+  // Fly to vehicle when selected (centered at comfortable zoom)
+  useEffect(() => {
+    if (!selectedVehicle || !mapRef.current) return;
+
+    isAnimatingRef.current = true;
+    mapRef.current.flyTo({
+      center: [selectedVehicle.lng, selectedVehicle.lat],
+      zoom: 15,
+      duration: 1000,
+      padding: { top: 100, bottom: bottomPadding, left: 0, right: 0 },
+    });
+    setTimeout(() => { isAnimatingRef.current = false; }, 1000);
+  }, [selectedVehicle?.vehicleId, bottomPadding]);
+
+  // Fit bounds when route is selected
+  useEffect(() => {
+    if (!selectedRouteId || !patterns) return;
+
+    const routePatterns = patterns.get(selectedRouteId);
+    if (routePatterns && routePatterns.length > 0) {
+      fitRouteBounds(routePatterns);
+    }
+  }, [selectedRouteId, patterns, fitRouteBounds]);
 
   // Handle map click - clear selections
   const handleMapClick = useCallback(() => {
