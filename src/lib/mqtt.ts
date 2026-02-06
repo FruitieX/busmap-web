@@ -326,6 +326,7 @@ class MqttService {
         mode,
         isSubscribed,
         lastUpdate: Date.now(),
+        lastPositionUpdate: Date.now(),
       };
 
       useVehicleStore.getState().updateVehicle(vehicle);

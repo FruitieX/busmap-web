@@ -84,11 +84,16 @@ export interface TrackedVehicle extends VehiclePosition {
   // Animation timestamp
   animationStart?: number;
 
+  // Derived motion rates (computed from consecutive samples)
+  reportedHeading?: number; // raw heading from GPS/compass
+  speedAcceleration?: number; // m/s² (observed speed change rate)
+
   // Is this from a subscribed route or nearby discovery?
   isSubscribed: boolean;
 
   // Stale timeout
-  lastUpdate: number;
+  lastUpdate: number; // last MQTT message received
+  lastPositionUpdate: number; // last time position actually changed
 
   // Exit animation timestamp (set when vehicle should fade out)
   exitingAt?: number;

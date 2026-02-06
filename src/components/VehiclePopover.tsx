@@ -9,7 +9,6 @@ interface VehiclePopoverProps {
   onClose: () => void;
   onSubscribe: () => void;
   onUnsubscribe: () => void;
-  anchor?: 'top' | 'bottom';
 }
 
 const formatDelay = (delaySeconds: number): string => {
@@ -33,7 +32,7 @@ const formatLastUpdate = (lastUpdate: number, now: number): string => {
   return `${minutes}m ago`;
 };
 
-const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe, anchor = 'bottom' }: VehiclePopoverProps) => {
+const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe }: VehiclePopoverProps) => {
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const developerMode = useSettingsStore((state) => state.developerMode);
   const [now, setNow] = useState(Date.now());
@@ -61,26 +60,17 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
         ? 'text-green-500'
         : 'text-gray-600 dark:text-gray-400';
 
-  // Popover appears above vehicle (arrow points down) or below vehicle (arrow points up)
-  const isAbove = anchor === 'bottom';
-
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9, y: isAbove ? 10 : -10 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9, y: isAbove ? 10 : -10 }}
-      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[160px] sm:min-w-[200px] pointer-events-auto ${isAbove ? 'mb-3 sm:mb-4' : 'mt-3 sm:mt-4'}`}
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[160px] sm:min-w-[200px] pointer-events-auto mb-3 sm:mb-4`}
     >
-      {/* Arrow pointing to vehicle */}
-      {isAbove ? (
-        <div className="absolute left-1/2 -bottom-2 -translate-x-1/2">
-          <div className="w-3 h-3 bg-white dark:bg-gray-800 border-r border-b border-gray-200 dark:border-gray-700 rotate-45" />
-        </div>
-      ) : (
-        <div className="absolute left-1/2 -top-2 -translate-x-1/2">
-          <div className="w-3 h-3 bg-white dark:bg-gray-800 border-l border-t border-gray-200 dark:border-gray-700 rotate-45" />
-        </div>
-      )}
+      {/* Arrow pointing down to vehicle */}
+      <div className="absolute left-1/2 -bottom-2 -translate-x-1/2">
+        <div className="w-3 h-3 bg-white dark:bg-gray-800 border-r border-b border-gray-200 dark:border-gray-700 rotate-45" />
+      </div>
 
       {/* Header */}
       <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
@@ -138,7 +128,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
           </div>
           <div className="flex justify-between">
             <span>Heading:</span>
-            <span>{vehicle.heading}°</span>
+            <span>{vehicle.heading?.toFixed(0) ?? 'N/A'}°</span>
           </div>
           <div className="flex justify-between">
             <span>Acceleration:</span>

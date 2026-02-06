@@ -3,7 +3,7 @@ import Map, { Marker, Source, Layer, AttributionControl } from 'react-map-gl/map
 import type { LineLayerSpecification, MapRef, ViewStateChangeEvent } from 'react-map-gl/maplibre';
 import { AnimatePresence } from 'framer-motion';
 import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore } from '@/stores';
-import { VehicleMarker } from './VehicleMarker';
+import { VehicleMarker, useAnimatedPosition, extrapolate } from './VehicleMarker';
 import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
 import type { TrackedVehicle, RoutePattern, Route } from '@/types';
@@ -83,6 +83,52 @@ const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, poi
   };
 };
 
+// Wrapper component that uses the animated position hook for smooth marker movement
+const AnimatedMarker = memo(({ vehicle, onClick }: { vehicle: TrackedVehicle; onClick: (vehicle: TrackedVehicle) => void }) => {
+  const pos = useAnimatedPosition(vehicle);
+  return (
+    <Marker
+      longitude={pos.lng}
+      latitude={pos.lat}
+      anchor="center"
+      onClick={(e) => {
+        e.originalEvent.stopPropagation();
+        onClick(vehicle);
+      }}
+    >
+      <VehicleMarker vehicle={vehicle} heading={pos.heading} />
+    </Marker>
+  );
+});
+AnimatedMarker.displayName = 'AnimatedMarker';
+
+// Popover wrapper component that tracks animated position.
+// Keyed by vehicleId so hooks reset on vehicle change.
+const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscribe }: {
+  vehicle: TrackedVehicle;
+  onClose: () => void;
+  onSubscribe: () => void;
+  onUnsubscribe: () => void;
+}) => {
+  const pos = useAnimatedPosition(vehicle);
+  return (
+    <Marker
+      longitude={pos.lng}
+      latitude={pos.lat}
+      anchor="bottom"
+      style={{ zIndex: 10 }}
+    >
+      <VehiclePopover
+        vehicle={vehicle}
+        onClose={onClose}
+        onSubscribe={onSubscribe}
+        onUnsubscribe={onUnsubscribe}
+      />
+    </Marker>
+  );
+});
+SelectedVehiclePopover.displayName = 'SelectedVehiclePopover';
+
 const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, onRouteSelect, bottomPadding = 200 }: BusMapProps) => {
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
@@ -98,80 +144,75 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     return vehicles.find((v) => v.vehicleId === selectedVehicleId) || null;
   }, [selectedVehicleId, vehicles]);
 
-  // Calculate vehicle popover anchor based on screen position
-  const vehiclePopoverAnchor = useMemo((): 'top' | 'bottom' => {
-    if (!selectedVehicle || !mapRef.current) return 'bottom';
-    const map = mapRef.current.getMap();
-    if (!map) return 'bottom';
-    
-    const point = map.project([selectedVehicle.lng, selectedVehicle.lat]);
-    // Guard against NaN from project (can happen during map initialization)
-    if (!isFinite(point.y)) return 'bottom';
-    // If vehicle is in upper ~150px of screen, show popover below
-    return point.y < 150 ? 'top' : 'bottom';
-  }, [selectedVehicle, viewport]);
 
   // Handle pending flyTo animations with padding for bottom sheet
   useEffect(() => {
     if (pendingFlyTo && mapRef.current) {
       const map = mapRef.current.getMap();
       if (map) {
-        // Use padding option to offset for bottom sheet
-        // This is more reliable than project/unproject which can return NaN
-        // Always provide bearing/pitch (defaulting to current) to prevent Chrome from skipping animation
+        const duration = 1000;
+        // Predict where the selected vehicle will be when the animation completes
+        let center: [number, number] = [pendingFlyTo.longitude, pendingFlyTo.latitude];
+        if (selectedVehicle && selectedVehicle.speed > 0.3) {
+          const predicted = extrapolate(
+            selectedVehicle.lat,
+            selectedVehicle.lng,
+            selectedVehicle.heading,
+            selectedVehicle.reportedHeading ?? selectedVehicle.heading,
+            selectedVehicle.speed,
+            selectedVehicle.speedAcceleration ?? selectedVehicle.acceleration ?? 0,
+            (Date.now() - selectedVehicle.lastPositionUpdate + duration) / 1000,
+          );
+          center = [predicted.lng, predicted.lat];
+        }
+        isAnimatingRef.current = true;
         mapRef.current.flyTo({
-          center: [pendingFlyTo.longitude, pendingFlyTo.latitude],
+          center,
           zoom: pendingFlyTo.zoom,
           bearing: pendingFlyTo.bearing ?? map.getBearing(),
           pitch: pendingFlyTo.pitch ?? map.getPitch(),
-          duration: 1000,
+          duration,
           padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
         });
+        setTimeout(() => { isAnimatingRef.current = false; }, duration);
       }
       consumePendingFlyTo();
     }
-  }, [pendingFlyTo, consumePendingFlyTo, bottomPadding]);
+  }, [pendingFlyTo, consumePendingFlyTo, bottomPadding, selectedVehicle]);
 
-  // Update selected vehicle position if it exists
-  const selectedVehiclePosition = useMemo(() => {
-    return selectedVehicle;
-  }, [selectedVehicle]);
 
-  // Auto-follow selected vehicle when it approaches screen edge
+
+  // Keep selected vehicle centered on an interval
   const isAnimatingRef = useRef(false);
+  const lastCenterTimeRef = useRef(0);
   
   useEffect(() => {
-    if (!selectedVehiclePosition || !mapRef.current) return;
+    if (!selectedVehicle || !mapRef.current) return;
     if (isAnimatingRef.current) return;
+
+    const now = Date.now();
+    if (now - lastCenterTimeRef.current < 1000) return;
 
     const map = mapRef.current.getMap();
     if (!map || !map.loaded()) return;
 
-    const container = map.getContainer();
-    const { width, height } = container.getBoundingClientRect();
-    if (width === 0 || height === 0) return;
+    lastCenterTimeRef.current = now;
+    map.easeTo({
+      center: [selectedVehicle.lng, selectedVehicle.lat],
+      padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
+      duration: 1000,
+    });
+  }, [selectedVehicle?.lng, selectedVehicle?.lat, bottomPadding]);
 
-    const popoverHeight = getPopoverHeight(width);
-    const point = map.project([selectedVehiclePosition.lng, selectedVehiclePosition.lat]);
-    if (!isFinite(point.x) || !isFinite(point.y)) return;
-
-    const marginX = width * 0.2;
-    const marginTop = vehiclePopoverAnchor === 'bottom' ? popoverHeight + 60 : 80;
-    const marginBottom = vehiclePopoverAnchor === 'top' ? bottomPadding + popoverHeight + 40 : bottomPadding + 40;
-
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (point.x < marginX) offsetX = point.x - marginX;
-    else if (point.x > width - marginX) offsetX = point.x - (width - marginX);
-
-    if (point.y < marginTop) offsetY = point.y - marginTop;
-    else if (point.y > height - marginBottom) offsetY = point.y - (height - marginBottom);
-
-    if (offsetX !== 0 || offsetY !== 0) {
-      map.panBy([offsetX, offsetY], { duration: 500 });
-    }
-  }, [selectedVehiclePosition?.lng, selectedVehiclePosition?.lat, bottomPadding, vehiclePopoverAnchor]);
+  // Auto-deselect vehicle on user-initiated pan/zoom
+  const handleMoveStart = useCallback(
+    (evt: ViewStateChangeEvent) => {
+      if (selectedVehicleId && evt.originalEvent) {
+        onVehicleSelect?.(null);
+      }
+    },
+    [selectedVehicleId, onVehicleSelect]
+  );
 
   const handleMove = useCallback(
     (evt: ViewStateChangeEvent) => {
@@ -345,19 +386,37 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     }
   }, [bottomPadding]);
 
-  // Fly to vehicle when selected (centered at comfortable zoom)
+  // Fly to vehicle when selected from the map (no flyToLocation from list)
   useEffect(() => {
     if (!selectedVehicle || !mapRef.current) return;
+    // If there's a pending flyTo (from list click), let that handle it
+    if (pendingFlyTo) return;
+
+    const duration = 500;
+    // Predict where the vehicle will be when the animation completes
+    let center: [number, number] = [selectedVehicle.lng, selectedVehicle.lat];
+    if (selectedVehicle.speed > 0.3) {
+      const predicted = extrapolate(
+        selectedVehicle.lat,
+        selectedVehicle.lng,
+        selectedVehicle.heading,
+        selectedVehicle.reportedHeading ?? selectedVehicle.heading,
+        selectedVehicle.speed,
+        selectedVehicle.speedAcceleration ?? selectedVehicle.acceleration ?? 0,
+        (Date.now() - selectedVehicle.lastPositionUpdate + duration) / 1000,
+      );
+      center = [predicted.lng, predicted.lat];
+    }
 
     isAnimatingRef.current = true;
     mapRef.current.flyTo({
-      center: [selectedVehicle.lng, selectedVehicle.lat],
-      zoom: 15,
-      duration: 1000,
-      padding: { top: 100, bottom: bottomPadding, left: 0, right: 0 },
+      center,
+      zoom: Math.max(mapRef.current.getMap()?.getZoom() ?? 15, 15),
+      duration,
+      padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
     });
     setTimeout(() => { isAnimatingRef.current = false; }, 1000);
-  }, [selectedVehicle?.vehicleId, bottomPadding]);
+  }, [selectedVehicle?.vehicleId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fit bounds when route is selected
   useEffect(() => {
@@ -388,6 +447,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     <Map
       ref={mapRef}
       initialViewState={initialViewState}
+      onMoveStart={handleMoveStart}
       onMoveEnd={handleMove}
       onClick={handleMapClick}
       mapStyle={MAP_STYLE}
@@ -450,39 +510,24 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
       {/* Vehicle markers */}
       {vehicles.map((vehicle) => (
-        <Marker
+        <AnimatedMarker
           key={vehicle.vehicleId}
-          longitude={vehicle.lng}
-          latitude={vehicle.lat}
-          anchor="center"
-          onClick={(e) => {
-            e.originalEvent.stopPropagation();
-            handleVehicleClick(vehicle);
-          }}
-        >
-          <VehicleMarker vehicle={vehicle} />
-        </Marker>
+          vehicle={vehicle}
+          onClick={handleVehicleClick}
+        />
       ))}
 
       {/* Popovers rendered after vehicle markers for higher z-index */}
       {/* Vehicle popover - follows selected vehicle */}
       <AnimatePresence>
-        {selectedVehiclePosition && (
-          <Marker
-            key={`vehicle-popover-${vehiclePopoverAnchor}`}
-            longitude={selectedVehiclePosition.lng}
-            latitude={selectedVehiclePosition.lat}
-            anchor={vehiclePopoverAnchor}
-            style={{ zIndex: 10 }}
-          >
-            <VehiclePopover
-              vehicle={selectedVehiclePosition}
-              anchor={vehiclePopoverAnchor}
-              onClose={() => onVehicleSelect?.(null)}
-              onSubscribe={handlePopoverSubscribe}
-              onUnsubscribe={handlePopoverUnsubscribe}
-            />
-          </Marker>
+        {selectedVehicle && (
+          <SelectedVehiclePopover
+            key={selectedVehicle.vehicleId}
+            vehicle={selectedVehicle}
+            onClose={() => onVehicleSelect?.(null)}
+            onSubscribe={handlePopoverSubscribe}
+            onUnsubscribe={handlePopoverUnsubscribe}
+          />
         )}
       </AnimatePresence>
 

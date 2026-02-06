@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { TrackedVehicle, ConnectionStatus } from '@/types';
 
-const STALE_TIMEOUT = 10_000; // 10 seconds - vehicles removed after this time without updates
+const STALE_TIMEOUT = 10_000;
 
 // Duration for exit animation in ms
 const EXIT_ANIMATION_MS = 300;
@@ -61,15 +61,54 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
       const vehicles = new Map(state.vehicles);
       const existing = vehicles.get(vehicle.vehicleId);
 
-      // Store previous position for animation
       if (existing) {
-        vehicle.prevLat = existing.lat;
-        vehicle.prevLng = existing.lng;
-        vehicle.prevHeading = existing.heading;
-        vehicle.animationStart = Date.now();
-      }
+        // Only recompute motion derivatives when position actually changed
+        const posChanged = vehicle.lat !== existing.lat || vehicle.lng !== existing.lng;
 
-      vehicle.lastUpdate = Date.now();
+        if (posChanged) {
+          vehicle.prevLat = existing.lat;
+          vehicle.prevLng = existing.lng;
+          vehicle.prevHeading = existing.heading;
+          vehicle.animationStart = Date.now();
+
+          // Store raw reported heading for turn prediction
+          vehicle.reportedHeading = vehicle.heading;
+
+          // Compute heading from velocity vector (more stable than reported heading)
+          const dlat = vehicle.lat - existing.lat;
+          const dlng = vehicle.lng - existing.lng;
+          const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+          if (dist > 1e-7 && vehicle.speed > 0.3) {
+            const bearing = (Math.atan2(dlng, dlat) * 180) / Math.PI;
+            vehicle.heading = ((bearing % 360) + 360) % 360;
+          }
+
+          // Compute speed acceleration from consecutive samples
+          const dt = (Date.now() - existing.lastPositionUpdate) / 1000;
+          if (dt > 0 && dt < 10) {
+            vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
+          } else {
+            vehicle.speedAcceleration = 0;
+          }
+
+          vehicle.lastPositionUpdate = Date.now();
+        } else {
+          // Position unchanged — preserve extrapolation state
+          vehicle.lastPositionUpdate = existing.lastPositionUpdate;
+          vehicle.heading = existing.heading;
+          vehicle.reportedHeading = existing.reportedHeading;
+          vehicle.speedAcceleration = existing.speedAcceleration;
+          vehicle.prevLat = existing.prevLat;
+          vehicle.prevLng = existing.prevLng;
+          vehicle.prevHeading = existing.prevHeading;
+          vehicle.animationStart = existing.animationStart;
+        }
+
+        vehicle.lastUpdate = Date.now();
+      } else {
+        vehicle.lastUpdate = Date.now();
+        vehicle.lastPositionUpdate = Date.now();
+      }
       vehicles.set(vehicle.vehicleId, vehicle);
 
       return { vehicles };
