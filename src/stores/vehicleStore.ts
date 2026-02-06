@@ -102,6 +102,12 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
           vehicle.prevLng = existing.prevLng;
           vehicle.prevHeading = existing.prevHeading;
           vehicle.animationStart = existing.animationStart;
+
+          // Override speed to 0 if position hasn't changed for >3s
+          // (API sometimes reports stale non-zero speed, e.g. metro at stations)
+          if (Date.now() - existing.lastPositionUpdate > 3000) {
+            vehicle.speed = 0;
+          }
         }
 
         vehicle.lastUpdate = Date.now();
