@@ -66,7 +66,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<SheetTab>('vehicles');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [sheetHeight, setSheetHeight] = useState(200); // Track bottom sheet height
+  const [sheetHeight, setSheetHeight] = useState(340); // Track bottom sheet height
 
   const showNearby = useSettingsStore((state) => state.showNearby);
   const nearbyRadius = useSettingsStore((state) => state.nearbyRadius);
@@ -294,7 +294,7 @@ const App = () => {
       <BottomSheet
         minHeight={80}
         maxHeight={500}
-        defaultHeight={200}
+        defaultHeight={340}
         onHeightChange={(h) => { setSheetHeight(h); setBottomPadding(h); }}
         header={
           <div className="flex items-center gap-2 mb-3 pt-1">

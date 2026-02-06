@@ -31,20 +31,32 @@ export const radiusToZoom = (radiusMeters: number, latitude: number, bottomPaddi
   return Math.log2(metersPerPixelAtZoom0 / metersPerPixel);
 };
 
+const DEFAULT_BOTTOM_PADDING = 340;
+
+/** Offset latitude so the target point appears at the center of visible area (accounting for top/bottom padding). */
+const offsetLatForPadding = (latitude: number, zoom: number, topPadding: number, bottomPadding: number): number => {
+  const pixelOffset = (bottomPadding - topPadding) / 2;
+  const earthCircumference = 40075016.686;
+  const metersPerPixel = earthCircumference * Math.cos(latitude * Math.PI / 180) / (512 * Math.pow(2, zoom));
+  return latitude - (pixelOffset * metersPerPixel) / 111320;
+};
+
 // Default viewport restored from last user location, or Helsinki as fallback
 const lastLocation = loadLastLocation();
 const defaultLat = lastLocation?.latitude ?? 60.17;
 const defaultLng = lastLocation?.longitude ?? 24.94;
+const defaultZoom = radiusToZoom(useSettingsStore.getState().locationRadius, defaultLat, DEFAULT_BOTTOM_PADDING);
 const DEFAULT_VIEWPORT: MapViewport = {
-  latitude: defaultLat,
+  latitude: offsetLatForPadding(defaultLat, defaultZoom, TOP_BAR_HEIGHT, DEFAULT_BOTTOM_PADDING),
   longitude: defaultLng,
-  zoom: radiusToZoom(useSettingsStore.getState().locationRadius, defaultLat),
+  zoom: defaultZoom,
   bearing: 0,
   pitch: 0,
 };
 
 interface LocationState {
   userLocation: UserLocation | null;
+  lastKnownLocation: { latitude: number; longitude: number } | null;
   locationError: string | null;
   isLocating: boolean;
   viewport: MapViewport;
@@ -64,10 +76,11 @@ interface LocationState {
 
 export const useLocationStore = create<LocationState>((set, get) => ({
   userLocation: null,
+  lastKnownLocation: lastLocation,
   locationError: null,
   isLocating: false,
   viewport: DEFAULT_VIEWPORT,
-  bottomPadding: 200,
+  bottomPadding: 340,
   pendingFlyTo: null,
 
   setUserLocation: (userLocation) => {

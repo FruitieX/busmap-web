@@ -132,6 +132,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
   const userLocation = useLocationStore((state) => state.userLocation);
+  const lastKnownLocation = useLocationStore((state) => state.lastKnownLocation);
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
   const vehicles = useMemo(() => Array.from(vehiclesMap.values()), [vehiclesMap]);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
@@ -495,6 +496,17 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             }}
           />
         </Source>
+
+      {/* Stored last location (greyed out, shown until actual location arrives) */}
+      {!userLocation && lastKnownLocation && (
+        <Marker
+          longitude={lastKnownLocation.longitude}
+          latitude={lastKnownLocation.latitude}
+          anchor="center"
+        >
+          <div className="w-4 h-4 rounded-full bg-gray-400 border-2 border-white/50 shadow-lg opacity-50" />
+        </Marker>
+      )}
 
       {/* User location dot */}
       {userLocation && (

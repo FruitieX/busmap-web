@@ -16,7 +16,7 @@ export const BottomSheet = ({
   header,
   minHeight = 80,
   maxHeight = 400,
-  defaultHeight = 200,
+  defaultHeight = 340,
   onHeightChange,
   onClose,
 }: BottomSheetProps) => {
@@ -24,8 +24,8 @@ export const BottomSheet = ({
   const dragControls = useDragControls();
 
   const y = useMotionValue(0);
-  // Derive height directly from y (no spring during drag - follows finger precisely)
-  const height = useTransform(y, [maxHeight - defaultHeight, minHeight - defaultHeight], [minHeight, maxHeight]);
+  // height = defaultHeight - y: dragging down (positive y) shrinks, dragging up (negative y) grows
+  const height = useTransform(y, [defaultHeight - minHeight, -(maxHeight - defaultHeight)], [minHeight, maxHeight]);
 
   // Report height changes during drag
   useEffect(() => {
@@ -42,7 +42,7 @@ export const BottomSheet = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Animate to minimized position
-        animate(y, maxHeight - minHeight, {
+        animate(y, defaultHeight - minHeight, {
           type: 'spring',
           stiffness: 400,
           damping: 40,
@@ -71,9 +71,9 @@ export const BottomSheet = ({
         height,
         paddingBottom: 'var(--safe-area-inset-bottom)',
       }}
-      initial={{ y: 100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
     >
       {/* Drag handle - visual only */}
       <div
@@ -88,7 +88,7 @@ export const BottomSheet = ({
         drag="y"
         dragControls={dragControls}
         dragListener={false}
-        dragConstraints={{ top: minHeight - defaultHeight, bottom: maxHeight - defaultHeight }}
+        dragConstraints={{ top: -(maxHeight - defaultHeight), bottom: defaultHeight - minHeight }}
         dragElastic={0}
         dragMomentum={false}
         style={{ y }}
