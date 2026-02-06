@@ -365,7 +365,6 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     
     const popoverHeight = getPopoverHeight(width);
 
-    console.log(bottomPadding);
     const padding = {
       top: popoverHeight + 40 + 10,
       bottom: bottomPadding / 2 - 100,

@@ -59,7 +59,7 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 10 }}
-      className="relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[180px] sm:min-w-[220px] pointer-events-auto mb-3 sm:mb-4"
+      className="relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[180px] sm:min-w-[220px] max-w-[300px] sm:max-w-[500px] pointer-events-auto mb-3 sm:mb-4"
     >
       {/* Arrow pointing down */}
       <div className="absolute left-1/2 -bottom-2 -translate-x-1/2">

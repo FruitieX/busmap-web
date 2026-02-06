@@ -65,7 +65,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe 
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[160px] sm:min-w-[200px] pointer-events-auto mb-3 sm:mb-4`}
+      className={`relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[160px] sm:min-w-[200px] max-w-[300px] sm:max-w-[500px] pointer-events-auto mb-3 sm:mb-4`}
     >
       {/* Arrow pointing down to vehicle */}
       <div className="absolute left-1/2 -bottom-2 -translate-x-1/2">
