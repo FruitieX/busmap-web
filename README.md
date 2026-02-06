@@ -1,6 +1,6 @@
-# BusMap Helsinki
+# BusMap
 
-Real-time Helsinki public transport vehicle tracker. Track buses, trams, metros, trains, and ferries live on the map.
+Real-time public transport vehicle tracker. Track buses, trams, metros, trains, and ferries live on the map.
 
 **Live:** https://busmap.netlify.app
 
@@ -51,6 +51,7 @@ npm run preview
 - **Maps:** MapLibre GL JS + react-map-gl
 - **Styling:** Tailwind CSS
 - **State:** Zustand
+- **Data fetching:** TanStack React Query
 - **Animations:** Framer Motion
 - **Real-time:** MQTT.js (HSL HFP feed)
 - **API:** Digitransit GraphQL API
