@@ -107,12 +107,31 @@ export interface BoundingBox {
   west: number;
 }
 
+// Available map tile styles from CARTO
+export type MapStyle = 'voyager' | 'positron' | 'dark-matter';
+
+export const MAP_STYLES: Record<MapStyle, { label: string; url: string }> = {
+  voyager: {
+    label: 'Voyager',
+    url: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+  },
+  positron: {
+    label: 'Positron (Light)',
+    url: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  },
+  'dark-matter': {
+    label: 'Dark Matter',
+    url: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  },
+};
+
 // App settings
 export interface Settings {
   showNearby: boolean;
   nearbyRadius: number; // meters
   locationRadius: number; // meters, converted to zoom level for map
   theme: 'light' | 'dark' | 'system';
+  mapStyle: MapStyle;
   showRouteLines: boolean;
   animateVehicles: boolean;
   developerMode: boolean;

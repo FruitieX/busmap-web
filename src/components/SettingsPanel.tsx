@@ -1,6 +1,8 @@
 import { memo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore, useSubscriptionStore } from '@/stores';
+import { MAP_STYLES } from '@/types';
+import type { MapStyle } from '@/types';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -54,6 +56,8 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setLocationRadius,
     theme,
     setTheme,
+    mapStyle,
+    setMapStyle,
     showRouteLines,
     setShowRouteLines,
     animateVehicles,
@@ -202,6 +206,20 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       <option value="system">System</option>
                       <option value="light">Light</option>
                       <option value="dark">Dark</option>
+                    </select>
+                  </div>
+
+                  {/* Map style */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700 dark:text-gray-200">Map style</span>
+                    <select
+                      value={mapStyle}
+                      onChange={(e) => setMapStyle(e.target.value as MapStyle)}
+                      className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 text-sm"
+                    >
+                      {Object.entries(MAP_STYLES).map(([key, { label }]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
                     </select>
                   </div>
 

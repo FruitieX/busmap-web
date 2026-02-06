@@ -9,8 +9,7 @@ import { RoutePopover } from './RoutePopover';
 import type { TrackedVehicle, RoutePattern, Route } from '@/types';
 import type { FeatureCollection, LineString, Polygon } from 'geojson';
 
-// Free OpenStreetMap-based tile style
-const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+import { MAP_STYLES } from '@/types';
 
 // Popover height based on screen width (matches Tailwind sm: breakpoint at 640px)
 const getPopoverHeight = (screenWidth: number) => screenWidth < 640 ? 170 : 200;
@@ -137,6 +136,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const vehicles = useMemo(() => Array.from(vehiclesMap.values()), [vehiclesMap]);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const showRouteLines = useSettingsStore((state) => state.showRouteLines);
+  const mapStyleUrl = useSettingsStore((state) => MAP_STYLES[state.mapStyle].url);
 
   // Selected vehicle - controlled externally via prop or internally
   const selectedVehicle = useMemo(() => {
@@ -449,7 +449,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       onMoveStart={handleMoveStart}
       onMoveEnd={handleMove}
       onClick={handleMapClick}
-      mapStyle={MAP_STYLE}
+      mapStyle={mapStyleUrl}
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
       reuseMaps

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Settings } from '@/types';
+import type { Settings, MapStyle } from '@/types';
 
 interface SettingsState extends Settings {
   setShowNearby: (show: boolean) => void;
@@ -8,6 +8,7 @@ interface SettingsState extends Settings {
   setNearbyRadius: (radius: number) => void;
   setLocationRadius: (radius: number) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  setMapStyle: (style: MapStyle) => void;
   setShowRouteLines: (show: boolean) => void;
   setAnimateVehicles: (animate: boolean) => void;
   setDeveloperMode: (enabled: boolean) => void;
@@ -19,6 +20,7 @@ const defaultSettings: Settings = {
   nearbyRadius: 1000,
   locationRadius: 1000,
   theme: 'system',
+  mapStyle: 'voyager',
   showRouteLines: true,
   animateVehicles: true,
   developerMode: false,
@@ -34,6 +36,7 @@ export const useSettingsStore = create<SettingsState>()(
       setNearbyRadius: (nearbyRadius) => set({ nearbyRadius }),
       setLocationRadius: (locationRadius) => set({ locationRadius }),
       setTheme: (theme) => set({ theme }),
+      setMapStyle: (mapStyle) => set({ mapStyle }),
       setShowRouteLines: (showRouteLines) => set({ showRouteLines }),
       setAnimateVehicles: (animateVehicles) => set({ animateVehicles }),
       setDeveloperMode: (developerMode) => set({ developerMode }),
@@ -41,7 +44,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'busmap-settings',
-      version: 4,
+      version: 5,
     }
   )
 );
