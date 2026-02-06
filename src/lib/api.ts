@@ -130,6 +130,30 @@ interface RoutePatternResponse {
   }>;
 }
 
+export const fetchRoutesByIds = async (routeIds: string[]): Promise<Route[]> => {
+  if (routeIds.length === 0) return [];
+
+  const idsString = routeIds.map((id) => `"${id}"`).join(', ');
+
+  const query = `{
+    routes(ids: [${idsString}]) {
+      gtfsId
+      shortName
+      longName
+      mode
+    }
+  }`;
+
+  const data = await graphqlFetch<RoutesResponse>(query);
+
+  return data.routes.map((route) => ({
+    gtfsId: route.gtfsId,
+    shortName: route.shortName,
+    longName: route.longName,
+    mode: normalizeMode(route.mode, route.gtfsId),
+  }));
+};
+
 export const fetchRoutePatterns = async (routeIds: string[]): Promise<Map<string, RoutePattern[]>> => {
   if (routeIds.length === 0) {
     return new Map();

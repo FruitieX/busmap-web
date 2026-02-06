@@ -2,6 +2,52 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { SubscribedRoute, Route, TransportMode, BoundingBox } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
+import { fetchRoutesByIds } from '@/lib/api';
+
+/**
+ * Migrate from the legacy busmap localStorage format (pre-maplibre rewrite).
+ *
+ * Old format:
+ *   - "activeRoutes": JSON string[] of gtfsId values
+ *   - "routes": JSON { [gtfsId]: { gtfsId, shortName, longName } }
+ *
+ * Fetches fresh route data from the API and drops any routes that no longer exist.
+ */
+const migrateLegacySubscriptions = async (): Promise<SubscribedRoute[] | null> => {
+  const raw = localStorage.getItem('activeRoutes');
+  if (!raw) return null;
+
+  try {
+    const activeRouteIds: string[] = JSON.parse(raw);
+    if (!Array.isArray(activeRouteIds) || activeRouteIds.length === 0) {
+      removeLegacyKeys();
+      return null;
+    }
+
+    const validIds = activeRouteIds.filter((id) => typeof id === 'string');
+    const routes = await fetchRoutesByIds(validIds);
+
+    const migrated: SubscribedRoute[] = routes.map((route, index) => ({
+      gtfsId: route.gtfsId,
+      shortName: route.shortName,
+      longName: route.longName,
+      mode: route.mode ?? inferMode(route.gtfsId),
+      color: getRouteColor(route, index, routes.length),
+      subscribedAt: Date.now(),
+    }));
+
+    removeLegacyKeys();
+    return migrated;
+  } catch {
+    // Don't remove legacy keys on network failure — retry next launch
+    return null;
+  }
+};
+
+const removeLegacyKeys = () => {
+  localStorage.removeItem('activeRoutes');
+  localStorage.removeItem('routes');
+};
 
 interface SubscriptionState {
   // Subscribed routes (for saved mode)
@@ -85,6 +131,16 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     {
       name: 'busmap-subscriptions',
       version: 1,
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        if (state.subscribedRoutes.length > 0) return;
+
+        migrateLegacySubscriptions().then((migrated) => {
+          if (migrated && migrated.length > 0) {
+            useSubscriptionStore.setState({ subscribedRoutes: migrated });
+          }
+        });
+      },
     }
   )
 );
