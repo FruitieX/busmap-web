@@ -133,7 +133,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
     }
 
     // Limit results
-    setSearchResults(filtered.slice(0, 20));
+    setSearchResults(filtered.slice(0, 50));
     setSelectedIndex(0);
   }, [search, routes, selectedMode]);
 
