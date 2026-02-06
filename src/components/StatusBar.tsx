@@ -148,12 +148,6 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
     setIsSearching(true);
   }, []);
 
-  const handleBlur = useCallback(() => {
-    // Delay to allow clicking on results and filter buttons
-    setTimeout(() => {
-      closeSearch();
-    }, 200);
-  }, [closeSearch]);
 
   const handleSelectRoute = useCallback(
     (route: Route) => {
@@ -233,7 +227,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
           <div className="flex items-center justify-between">
             {/* Connection status / Search */}
             {isSearching ? (
-              <div className="flex-1 relative">
+              <div className="flex-1 flex items-center gap-2">
                 <input
                   ref={inputRef}
                   type="text"
@@ -241,9 +235,17 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  onBlur={handleBlur}
-                  className="w-full bg-transparent text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none text-sm cursor-text"
+                  className="flex-1 bg-transparent text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none text-sm cursor-text"
                 />
+                <button
+                  className="shrink-0 w-6 h-6 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={closeSearch}
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             ) : (
               <button
@@ -337,7 +339,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                 </div>
 
                 {/* Results */}
-                <div ref={resultsRef} className="max-h-[280px] overflow-y-auto">
+                <div ref={resultsRef} className="max-h-[280px] overflow-y-auto scrollbar-thin">
                 {searchResults.length > 0 ? (
                   searchResults.map((route, index) => {
                     const subscribed = isSubscribed(route);

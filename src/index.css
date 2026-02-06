@@ -48,8 +48,13 @@ body {
     scrollbar-color: theme('colors.gray.300') transparent;
   }
 
+  .dark .scrollbar-thin {
+    scrollbar-color: theme('colors.gray.600') transparent;
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -59,6 +64,10 @@ body {
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: theme('colors.gray.300');
     border-radius: 3px;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.gray.600');
   }
 }
 
