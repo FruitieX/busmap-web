@@ -416,11 +416,11 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
               initial={false}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -100 }}
-              className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
+              className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-2 min-[425px]:gap-3 cursor-pointer transition-all hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
               onClick={() => onRouteClick?.(route)}
             >
               <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+                className="w-10 h-10 min-[425px]:w-12 min-[425px]:h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
                 style={{ backgroundColor: color }}
               >
                 {route.shortName}
@@ -434,21 +434,21 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
                 </div>
               </div>
               <button
-                className="group shrink-0 w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                className="group shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   onUnsubscribe(route.gtfsId);
                 }}
                 title="Remove route"
               >
-                <svg className="w-5 h-5 group-hover:hidden" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 group-hover:hidden" fill="currentColor" viewBox="0 0 20 20">
                   <path
                     fillRule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                     clipRule="evenodd"
                   />
                 </svg>
-                <svg className="w-5 h-5 hidden group-hover:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 hidden group-hover:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
