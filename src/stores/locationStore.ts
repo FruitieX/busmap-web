@@ -1,11 +1,44 @@
 import { create } from 'zustand';
 import type { UserLocation, MapViewport } from '@/types';
+import { useSettingsStore } from './settingsStore';
 
-// Default viewport centered on Helsinki
+const LAST_LOCATION_KEY = 'busmap-last-location';
+
+const loadLastLocation = (): { latitude: number; longitude: number } | null => {
+  try {
+    const stored = localStorage.getItem(LAST_LOCATION_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (isFinite(parsed.latitude) && isFinite(parsed.longitude)) return parsed;
+  } catch { /* ignore */ }
+  return null;
+};
+
+const saveLastLocation = (latitude: number, longitude: number) => {
+  localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ latitude, longitude }));
+};
+
+const TOP_BAR_HEIGHT = 48; // 40px bar + 8px padding
+
+/** Convert a radius in meters to a map zoom level that fits the circle on screen. */
+export const radiusToZoom = (radiusMeters: number, latitude: number, bottomPadding = 0): number => {
+  const earthCircumference = 40075016.686;
+  // MapLibre uses 512px tiles
+  const metersPerPixelAtZoom0 = earthCircumference * Math.cos(latitude * Math.PI / 180) / 512;
+  const availableHeight = window.innerHeight - bottomPadding - TOP_BAR_HEIGHT;
+  const halfScreen = Math.min(window.innerWidth, availableHeight) / 2;
+  const metersPerPixel = radiusMeters / halfScreen;
+  return Math.log2(metersPerPixelAtZoom0 / metersPerPixel);
+};
+
+// Default viewport restored from last user location, or Helsinki as fallback
+const lastLocation = loadLastLocation();
+const defaultLat = lastLocation?.latitude ?? 60.17;
+const defaultLng = lastLocation?.longitude ?? 24.94;
 const DEFAULT_VIEWPORT: MapViewport = {
-  latitude: 60.17,
-  longitude: 24.94,
-  zoom: 14,
+  latitude: defaultLat,
+  longitude: defaultLng,
+  zoom: radiusToZoom(useSettingsStore.getState().locationRadius, defaultLat),
   bearing: 0,
   pitch: 0,
 };
@@ -15,12 +48,14 @@ interface LocationState {
   locationError: string | null;
   isLocating: boolean;
   viewport: MapViewport;
+  bottomPadding: number;
   pendingFlyTo: { latitude: number; longitude: number; zoom: number; bearing?: number; pitch?: number } | null;
 
   setUserLocation: (location: UserLocation) => void;
   setLocationError: (error: string | null) => void;
   setIsLocating: (isLocating: boolean) => void;
   setViewport: (viewport: Partial<MapViewport>) => void;
+  setBottomPadding: (padding: number) => void;
   flyToLocation: (lat: number, lng: number, zoom?: number) => void;
   flyToUserLocation: () => void;
   consumePendingFlyTo: () => void;
@@ -32,11 +67,16 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   locationError: null,
   isLocating: false,
   viewport: DEFAULT_VIEWPORT,
+  bottomPadding: 200,
   pendingFlyTo: null,
 
-  setUserLocation: (userLocation) => set({ userLocation, locationError: null }),
+  setUserLocation: (userLocation) => {
+    saveLastLocation(userLocation.latitude, userLocation.longitude);
+    set({ userLocation, locationError: null });
+  },
   setLocationError: (locationError) => set({ locationError, isLocating: false }),
   setIsLocating: (isLocating) => set({ isLocating }),
+  setBottomPadding: (bottomPadding) => set({ bottomPadding }),
 
   setViewport: (partial) =>
     set((state) => {
@@ -56,7 +96,8 @@ export const useLocationStore = create<LocationState>((set, get) => ({
       if (partial.pitch !== undefined && isFinite(partial.pitch)) {
         validated.pitch = Math.max(0, Math.min(85, partial.pitch));
       }
-      return { viewport: { ...state.viewport, ...validated } };
+      const newViewport = { ...state.viewport, ...validated };
+      return { viewport: newViewport };
     }),
 
   flyToLocation: (latitude, longitude, zoom) => {
@@ -70,14 +111,15 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   },
 
   flyToUserLocation: () => {
-    const { userLocation } = get();
+    const { userLocation, bottomPadding } = get();
+    const { locationRadius } = useSettingsStore.getState();
 
     const doFlyTo = (loc: UserLocation) => {
       set({
         pendingFlyTo: {
           latitude: loc.latitude,
           longitude: loc.longitude,
-          zoom: 15,
+          zoom: radiusToZoom(locationRadius, loc.latitude, bottomPadding),
           bearing: 0,
           pitch: 0,
         },
@@ -110,91 +152,63 @@ export const useLocationStore = create<LocationState>((set, get) => ({
 }));
 
 // ============================================================================
-// Location Tracker - handles watchPosition + polling fallback
+// Location tracking
 // ============================================================================
 
-interface TrackerState {
-  watchId: number | null;
-  lastUpdateTime: number;
-  consecutiveErrors: number;
-  useHighAccuracy: boolean;
-  isActive: boolean;
-  pollIntervalId: ReturnType<typeof setInterval> | null;
-  interactionListenerActive: boolean;
-}
+let watchId: number | null = null;
+let highAccuracy = false;
 
-const state: TrackerState = {
-  watchId: null,
-  lastUpdateTime: 0,
-  consecutiveErrors: 0,
-  useHighAccuracy: true,
-  isActive: false,
-  pollIntervalId: null,
-  interactionListenerActive: false,
-};
-
-// How long without updates before we consider the watcher stale
-const STALE_THRESHOLD_MS = 30_000;
-// How often to poll as a fallback
-const POLL_INTERVAL_MS = 15_000;
-// How often to poll when there's been recent interaction
-const INTERACTION_POLL_DELAY_MS = 100;
+const positionToLocation = (position: GeolocationPosition): UserLocation => ({
+  latitude: position.coords.latitude,
+  longitude: position.coords.longitude,
+  accuracy: position.coords.accuracy,
+  timestamp: position.timestamp,
+});
 
 const updateLocation = (position: GeolocationPosition) => {
-  state.lastUpdateTime = Date.now();
-  state.consecutiveErrors = 0;
-  useLocationStore.getState().setUserLocation({
-    latitude: position.coords.latitude,
-    longitude: position.coords.longitude,
-    accuracy: position.coords.accuracy,
-    timestamp: position.timestamp,
-  });
-};
-
-const handleWatchError = (error: GeolocationPositionError) => {
-  console.warn('Location watch error:', error.message, `(code: ${error.code})`);
-  state.consecutiveErrors++;
-
-  if (error.code === error.PERMISSION_DENIED) {
-    useLocationStore.getState().setLocationError('Location permission denied');
-    stopWatchingLocation();
-    return;
-  }
-
-  // After consecutive errors with high accuracy, try low accuracy
-  if (state.consecutiveErrors >= 2 && state.useHighAccuracy) {
-    console.warn('Switching to low accuracy mode after errors');
-    state.useHighAccuracy = false;
-    restartWatcher();
-  }
+  useLocationStore.getState().setUserLocation(positionToLocation(position));
 };
 
 const startWatcher = () => {
-  if (state.watchId !== null || !navigator.geolocation) return;
+  if (watchId !== null || !navigator.geolocation) return;
 
-  state.watchId = navigator.geolocation.watchPosition(
+  watchId = navigator.geolocation.watchPosition(
     (position) => {
-      // If we were in low accuracy and got a successful update, try switching back
-      if (!state.useHighAccuracy && state.consecutiveErrors === 0) {
-        state.useHighAccuracy = true;
+      updateLocation(position);
+
+      // After first low-accuracy fix, upgrade to high accuracy
+      if (!highAccuracy) {
+        highAccuracy = true;
         restartWatcher();
+      }
+    },
+    (error) => {
+      console.warn('Location watch error:', error.message);
+
+      if (error.code === error.PERMISSION_DENIED) {
+        useLocationStore.getState().setLocationError('Location permission denied');
+        stopWatchingLocation();
         return;
       }
-      updateLocation(position);
+
+      // If high accuracy fails, fall back to low accuracy
+      if (highAccuracy) {
+        highAccuracy = false;
+        restartWatcher();
+      }
     },
-    handleWatchError,
     {
-      enableHighAccuracy: state.useHighAccuracy,
-      timeout: state.useHighAccuracy ? 15_000 : 30_000,
+      enableHighAccuracy: highAccuracy,
+      timeout: 15_000,
       maximumAge: 10_000,
     },
   );
 };
 
 const stopWatcher = () => {
-  if (state.watchId !== null) {
-    navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
   }
 };
 
@@ -203,120 +217,12 @@ const restartWatcher = () => {
   startWatcher();
 };
 
-const pollLocation = () => {
-  if (!navigator.geolocation || !state.isActive) return;
-
-  const timeSinceUpdate = Date.now() - state.lastUpdateTime;
-  const isStale = timeSinceUpdate > STALE_THRESHOLD_MS;
-
-  // Only actively poll if watcher appears stale
-  if (!isStale) return;
-
-  console.debug('Location watcher appears stale, polling with getCurrentPosition');
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      updateLocation(position);
-      // Watcher might have recovered, restart it
-      if (state.watchId !== null) {
-        console.debug('Got poll response, restarting watcher');
-        state.useHighAccuracy = true;
-        state.consecutiveErrors = 0;
-        restartWatcher();
-      }
-    },
-    (error) => {
-      console.warn('Poll getCurrentPosition failed:', error.message);
-      // If high accuracy polling fails, try low accuracy
-      if (state.useHighAccuracy) {
-        state.useHighAccuracy = false;
-        restartWatcher();
-      }
-    },
-    {
-      enableHighAccuracy: state.useHighAccuracy,
-      timeout: state.useHighAccuracy ? 10_000 : 20_000,
-      maximumAge: 30_000,
-    },
-  );
-};
-
-const startPolling = () => {
-  if (state.pollIntervalId !== null) return;
-  state.pollIntervalId = setInterval(pollLocation, POLL_INTERVAL_MS);
-};
-
-const stopPolling = () => {
-  if (state.pollIntervalId !== null) {
-    clearInterval(state.pollIntervalId);
-    state.pollIntervalId = null;
-  }
-};
-
-// Debounced interaction handler to avoid excessive polling
-let interactionTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const handleInteraction = () => {
-  if (!state.isActive) return;
-
-  // Debounce: only trigger once per interaction burst
-  if (interactionTimeout !== null) return;
-
-  interactionTimeout = setTimeout(() => {
-    interactionTimeout = null;
-
-    const timeSinceUpdate = Date.now() - state.lastUpdateTime;
-    if (timeSinceUpdate > STALE_THRESHOLD_MS) {
-      console.debug('User interaction detected, triggering location poll');
-      pollLocation();
-    }
-  }, INTERACTION_POLL_DELAY_MS);
-};
-
-const addInteractionListeners = () => {
-  if (state.interactionListenerActive) return;
-  state.interactionListenerActive = true;
-
-  // Use capture phase to detect interactions early
-  document.addEventListener('pointerdown', handleInteraction, { capture: true, passive: true });
-  document.addEventListener('touchstart', handleInteraction, { capture: true, passive: true });
-  document.addEventListener('wheel', handleInteraction, { capture: true, passive: true });
-  document.addEventListener('keydown', handleInteraction, { capture: true, passive: true });
-};
-
-const removeInteractionListeners = () => {
-  if (!state.interactionListenerActive) return;
-  state.interactionListenerActive = false;
-
-  document.removeEventListener('pointerdown', handleInteraction, { capture: true });
-  document.removeEventListener('touchstart', handleInteraction, { capture: true });
-  document.removeEventListener('wheel', handleInteraction, { capture: true });
-  document.removeEventListener('keydown', handleInteraction, { capture: true });
-};
-
 const handleVisibilityChange = () => {
-  if (!state.isActive) return;
+  if (watchId === null) return;
 
   if (document.visibilityState === 'visible') {
-    console.debug('Page became visible, refreshing location tracking');
-    state.consecutiveErrors = 0;
-    state.useHighAccuracy = true;
-    state.lastUpdateTime = Date.now();
+    highAccuracy = false;
     restartWatcher();
-    // Also do an immediate poll in case watcher is slow to respond
-    setTimeout(pollLocation, 500);
-  }
-};
-
-const handlePageShow = (event: PageTransitionEvent) => {
-  // bfcache restoration - page was restored from back/forward cache
-  if (event.persisted && state.isActive) {
-    console.debug('Page restored from bfcache, restarting location tracking');
-    state.consecutiveErrors = 0;
-    state.useHighAccuracy = true;
-    state.lastUpdateTime = Date.now();
-    restartWatcher();
-    setTimeout(pollLocation, 500);
   }
 };
 
@@ -333,69 +239,63 @@ export const requestUserLocation = (): Promise<UserLocation> => {
 
     useLocationStore.getState().setIsLocating(true);
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const location: UserLocation = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: position.timestamp,
-        };
-        useLocationStore.getState().setUserLocation(location);
+    let resolved = false;
+
+    const finish = (location: UserLocation) => {
+      useLocationStore.getState().setUserLocation(location);
+      if (!resolved) {
+        resolved = true;
         useLocationStore.getState().setIsLocating(false);
-        state.lastUpdateTime = Date.now();
-        state.useHighAccuracy = true;
         resolve(location);
+      }
+    };
+
+    const fail = (error: GeolocationPositionError) => {
+      if (resolved) return;
+      resolved = true;
+      useLocationStore.getState().setIsLocating(false);
+      const message =
+        error.code === error.PERMISSION_DENIED
+          ? 'Location permission denied'
+          : error.code === error.POSITION_UNAVAILABLE
+            ? 'Location unavailable'
+            : 'Location request timed out';
+      useLocationStore.getState().setLocationError(message);
+      reject(new Error(message));
+    };
+
+    // Low accuracy first (fast, often cached), then refine with high accuracy
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        finish(positionToLocation(pos));
+        navigator.geolocation.getCurrentPosition(
+          (precise) => finish(positionToLocation(precise)),
+          () => {},
+          { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+        );
       },
-      (error) => {
-        useLocationStore.getState().setIsLocating(false);
-        const message =
-          error.code === error.PERMISSION_DENIED
-            ? 'Location permission denied'
-            : error.code === error.POSITION_UNAVAILABLE
-              ? 'Location unavailable'
-              : 'Location request timed out';
-        useLocationStore.getState().setLocationError(message);
-        reject(new Error(message));
+      () => {
+        // Low accuracy failed, fall back to high accuracy
+        navigator.geolocation.getCurrentPosition(
+          (pos) => finish(positionToLocation(pos)),
+          fail,
+          { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
+        );
       },
-      {
-        enableHighAccuracy: state.useHighAccuracy,
-        timeout: state.useHighAccuracy ? 10_000 : 20_000,
-        maximumAge: 60_000,
-      },
+      { enableHighAccuracy: false, timeout: 5_000, maximumAge: 300_000 },
     );
   });
 };
 
 export const watchUserLocation = () => {
-  if (state.isActive) return;
-  state.isActive = true;
+  if (watchId !== null) return;
 
-  state.lastUpdateTime = Date.now();
-  state.consecutiveErrors = 0;
-  state.useHighAccuracy = true;
-
+  highAccuracy = false;
   startWatcher();
-  startPolling();
-  addInteractionListeners();
-
   document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('pageshow', handlePageShow);
 };
 
 export const stopWatchingLocation = () => {
-  if (!state.isActive) return;
-  state.isActive = false;
-
   stopWatcher();
-  stopPolling();
-  removeInteractionListeners();
-
   document.removeEventListener('visibilitychange', handleVisibilityChange);
-  window.removeEventListener('pageshow', handlePageShow);
-
-  if (interactionTimeout !== null) {
-    clearTimeout(interactionTimeout);
-    interactionTimeout = null;
-  }
 };

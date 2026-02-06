@@ -6,6 +6,7 @@ interface SettingsState extends Settings {
   setShowNearby: (show: boolean) => void;
   toggleNearby: () => void;
   setNearbyRadius: (radius: number) => void;
+  setLocationRadius: (radius: number) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setShowRouteLines: (show: boolean) => void;
   setAnimateVehicles: (animate: boolean) => void;
@@ -16,6 +17,7 @@ interface SettingsState extends Settings {
 const defaultSettings: Settings = {
   showNearby: false,
   nearbyRadius: 1000,
+  locationRadius: 1000,
   theme: 'system',
   showRouteLines: true,
   animateVehicles: true,
@@ -30,6 +32,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowNearby: (showNearby) => set({ showNearby }),
       toggleNearby: () => set((state) => ({ showNearby: !state.showNearby })),
       setNearbyRadius: (nearbyRadius) => set({ nearbyRadius }),
+      setLocationRadius: (locationRadius) => set({ locationRadius }),
       setTheme: (theme) => set({ theme }),
       setShowRouteLines: (showRouteLines) => set({ showRouteLines }),
       setAnimateVehicles: (animateVehicles) => set({ animateVehicles }),
@@ -38,7 +41,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'busmap-settings',
-      version: 3,
+      version: 4,
     }
   )
 );

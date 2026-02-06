@@ -125,7 +125,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           bearing: pendingFlyTo.bearing ?? map.getBearing(),
           pitch: pendingFlyTo.pitch ?? map.getPitch(),
           duration: 1000,
-          padding: { top: 0, left: 0, right: 0, bottom: bottomPadding },
+          padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
         });
       }
       consumePendingFlyTo();

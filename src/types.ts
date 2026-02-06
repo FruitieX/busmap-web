@@ -106,6 +106,7 @@ export interface BoundingBox {
 export interface Settings {
   showNearby: boolean;
   nearbyRadius: number; // meters
+  locationRadius: number; // meters, converted to zoom level for map
   theme: 'light' | 'dark' | 'system';
   showRouteLines: boolean;
   animateVehicles: boolean;

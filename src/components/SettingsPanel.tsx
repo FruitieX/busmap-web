@@ -50,6 +50,8 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     toggleNearby,
     nearbyRadius,
     setNearbyRadius,
+    locationRadius,
+    setLocationRadius,
     theme,
     setTheme,
     showRouteLines,
@@ -141,7 +143,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                   <div className="space-y-3">
                     <input
                       type="range"
-                      min="500"
+                      min="250"
                       max="4000"
                       step="250"
                       value={nearbyRadius}
@@ -156,6 +158,32 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                   </div>
                 </section>
               )}
+
+              {/* Location Zoom Radius */}
+              <section>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  Location Zoom Radius
+                </h3>
+                <div className="space-y-3">
+                  <input
+                    type="range"
+                    min="250"
+                    max="4000"
+                    step="250"
+                    value={locationRadius}
+                    onChange={(e) => setLocationRadius(Number(e.target.value))}
+                    className="w-full accent-primary-500"
+                  />
+                  <div className="text-center text-sm text-gray-600 dark:text-gray-300">
+                    {locationRadius < 1000
+                      ? `${locationRadius} meters`
+                      : `${(locationRadius / 1000).toFixed(1)} km`}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    Visible area on startup and when pressing &quot;Go to my location&quot;
+                  </div>
+                </div>
+              </section>
 
               {/* Appearance */}
               <section>

@@ -85,6 +85,7 @@ const App = () => {
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const { subscribeToRoute, unsubscribeFromRoute } = useSubscriptionStore();
   const flyToUserLocation = useLocationStore((state) => state.flyToUserLocation);
+  const setBottomPadding = useLocationStore((state) => state.setBottomPadding);
 
   // Fetch route patterns for subscribed routes
   const routeIds = useMemo(() => subscribedRoutes.map((r) => r.gtfsId), [subscribedRoutes]);
@@ -294,7 +295,7 @@ const App = () => {
         minHeight={80}
         maxHeight={500}
         defaultHeight={200}
-        onHeightChange={setSheetHeight}
+        onHeightChange={(h) => { setSheetHeight(h); setBottomPadding(h); }}
         header={
           <div className="flex items-center gap-2 mb-3 pt-1">
             <button
