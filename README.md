@@ -1,4 +1,4 @@
-# BusMap
+# busmap
 
 Real-time public transport vehicle tracker. Track buses, trams, metros, trains, and ferries live on the map.
 
