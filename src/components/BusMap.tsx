@@ -328,7 +328,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   selectedRouteIdRef.current = selectedRouteId;
 
   useEffect(() => {
-    const PING_DURATION_MS = 1000; // Duration of ping animation after update (matches typical 1s update rate)
+    const PING_DURATION_MS = 750; // Duration of ping animation after update (matches typical 1s update rate)
     
     const animate = () => {
       const now = Date.now();
@@ -341,11 +341,19 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       // Get current zoom for scaling
       const zoom = mapRef.current?.getMap()?.getZoom() ?? 14;
       // Scale factor: 1.0 at zoom 14, smaller when zoomed out, capped when zoomed in
-      const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 14) * 0.3));
+      const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 15) * 0.3));
       const baseRadius = 14 * zoomScale;
       const selectedRadius = 18 * zoomScale;
-      const textSize = Math.max(8, 10 * zoomScale);
+      const baseTextSize = 15 * zoomScale;
       const arrowSize = 0.25 * zoomScale; // Base size for 64px arrow icon
+
+      // Scale text size based on label length: shorter labels get larger text
+      const getTextSize = (label: string) => {
+        const len = label.length;
+        // 1 char: 120%, 2 chars: 100%, 3 chars: 85%, 4+ chars: 70%
+        const labelScale = len === 1 ? 1.2 : len === 2 ? 1.0 : len === 3 ? 0.85 : 0.7;
+        return Math.max(2, baseTextSize * labelScale);
+      };
 
       for (const vehicle of currentVehicles) {
         const timing = getVehicleTiming(vehicle.mode);
@@ -439,7 +447,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             pingOpacity,
             circleRadius,
             arrowSize,
-            textSize,
+            textSize: getTextSize(vehicle.routeShortName),
             sortKey,
           },
           geometry: {
