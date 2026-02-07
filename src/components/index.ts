@@ -1,5 +1,6 @@
 export { BusMap } from './BusMap';
-export { useAnimatedPosition, extrapolate } from './VehicleMarker';
+export { useAnimatedPosition } from './VehicleMarker';
+export type { InterpolatedPosition } from './VehicleMarker';
 export { VehiclePopover } from './VehiclePopover';
 export { RoutePopover } from './RoutePopover';
 export { VehicleList } from './VehicleList';

@@ -20,6 +20,64 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c;
 };
 
+/**
+ * Compute derived motion fields when a new vehicle position arrives.
+ * Mutates `vehicle` in place for performance (avoids allocating new objects
+ * on every MQTT message).
+ */
+const processVehicleUpdate = (
+  vehicle: TrackedVehicle,
+  existing: TrackedVehicle | undefined,
+  now: number,
+): void => {
+  if (!existing) {
+    vehicle.lastUpdate = now;
+    vehicle.lastPositionUpdate = now;
+    return;
+  }
+
+  const posChanged = vehicle.lat !== existing.lat || vehicle.lng !== existing.lng;
+
+  if (posChanged) {
+    vehicle.reportedHeading = vehicle.heading;
+
+    // Compute heading from velocity vector, correcting for cos(lat)
+    // so east-west movement is properly weighted at higher latitudes.
+    const dlat = vehicle.lat - existing.lat;
+    const dlng = (vehicle.lng - existing.lng) * Math.cos((existing.lat * Math.PI) / 180);
+    const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+    if (dist > 1e-7 && vehicle.speed > 0.3) {
+      const bearing = (Math.atan2(dlng, dlat) * 180) / Math.PI;
+      vehicle.heading = ((bearing % 360) + 360) % 360;
+    }
+
+    // Compute speed acceleration from consecutive samples
+    const dt = (now - existing.lastPositionUpdate) / 1000;
+    const timing = getVehicleTiming(vehicle.mode);
+    if (dt > 0 && dt < timing.maxAccelDtSeconds) {
+      vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
+    } else {
+      vehicle.speedAcceleration = 0;
+    }
+
+    vehicle.lastPositionUpdate = now;
+  } else {
+    // Position unchanged — preserve extrapolation state
+    vehicle.lastPositionUpdate = existing.lastPositionUpdate;
+    vehicle.heading = existing.heading;
+    vehicle.reportedHeading = existing.reportedHeading;
+    vehicle.speedAcceleration = existing.speedAcceleration;
+
+    // Override speed to 0 if position hasn't changed for longer than expected update interval
+    const timing = getVehicleTiming(vehicle.mode);
+    if (now - existing.lastPositionUpdate > timing.stationaryThresholdMs) {
+      vehicle.speed = 0;
+    }
+  }
+
+  vehicle.lastUpdate = now;
+};
+
 interface VehicleState {
   // All tracked vehicles by vehicleId
   vehicles: Map<string, TrackedVehicle>;
@@ -60,64 +118,8 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
     set((state) => {
       const vehicles = new Map(state.vehicles);
       const existing = vehicles.get(vehicle.vehicleId);
-
-      if (existing) {
-        // Only recompute motion derivatives when position actually changed
-        const posChanged = vehicle.lat !== existing.lat || vehicle.lng !== existing.lng;
-
-        if (posChanged) {
-          vehicle.prevLat = existing.lat;
-          vehicle.prevLng = existing.lng;
-          vehicle.prevHeading = existing.heading;
-          vehicle.animationStart = Date.now();
-
-          // Store raw reported heading for turn prediction
-          vehicle.reportedHeading = vehicle.heading;
-
-          // Compute heading from velocity vector (more stable than reported heading)
-          const dlat = vehicle.lat - existing.lat;
-          const dlng = vehicle.lng - existing.lng;
-          const dist = Math.sqrt(dlat * dlat + dlng * dlng);
-          if (dist > 1e-7 && vehicle.speed > 0.3) {
-            const bearing = (Math.atan2(dlng, dlat) * 180) / Math.PI;
-            vehicle.heading = ((bearing % 360) + 360) % 360;
-          }
-
-          // Compute speed acceleration from consecutive samples
-          const dt = (Date.now() - existing.lastPositionUpdate) / 1000;
-          const timing = getVehicleTiming(vehicle.mode);
-          if (dt > 0 && dt < timing.maxAccelDtSeconds) {
-            vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
-          } else {
-            vehicle.speedAcceleration = 0;
-          }
-
-          vehicle.lastPositionUpdate = Date.now();
-        } else {
-          // Position unchanged — preserve extrapolation state
-          vehicle.lastPositionUpdate = existing.lastPositionUpdate;
-          vehicle.heading = existing.heading;
-          vehicle.reportedHeading = existing.reportedHeading;
-          vehicle.speedAcceleration = existing.speedAcceleration;
-          vehicle.prevLat = existing.prevLat;
-          vehicle.prevLng = existing.prevLng;
-          vehicle.prevHeading = existing.prevHeading;
-          vehicle.animationStart = existing.animationStart;
-
-          // Override speed to 0 if position hasn't changed for longer than expected update interval
-          const timing = getVehicleTiming(vehicle.mode);
-          if (Date.now() - existing.lastPositionUpdate > timing.stationaryThresholdMs) {
-            vehicle.speed = 0;
-          }
-        }
-
-        vehicle.lastUpdate = Date.now();
-      } else {
-        vehicle.lastUpdate = Date.now();
-        vehicle.lastPositionUpdate = Date.now();
-      }
+      processVehicleUpdate(vehicle, existing, Date.now());
       vehicles.set(vehicle.vehicleId, vehicle);
-
       return { vehicles };
     });
   },
@@ -139,55 +141,7 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
 
       for (const vehicle of vehicleBatch) {
         const existing = vehicles.get(vehicle.vehicleId);
-
-        if (existing) {
-          const posChanged = vehicle.lat !== existing.lat || vehicle.lng !== existing.lng;
-
-          if (posChanged) {
-            vehicle.prevLat = existing.lat;
-            vehicle.prevLng = existing.lng;
-            vehicle.prevHeading = existing.heading;
-            vehicle.animationStart = now;
-            vehicle.reportedHeading = vehicle.heading;
-
-            const dlat = vehicle.lat - existing.lat;
-            const dlng = vehicle.lng - existing.lng;
-            const dist = Math.sqrt(dlat * dlat + dlng * dlng);
-            if (dist > 1e-7 && vehicle.speed > 0.3) {
-              const bearing = (Math.atan2(dlng, dlat) * 180) / Math.PI;
-              vehicle.heading = ((bearing % 360) + 360) % 360;
-            }
-
-            const dt = (now - existing.lastPositionUpdate) / 1000;
-            const timing = getVehicleTiming(vehicle.mode);
-            if (dt > 0 && dt < timing.maxAccelDtSeconds) {
-              vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
-            } else {
-              vehicle.speedAcceleration = 0;
-            }
-
-            vehicle.lastPositionUpdate = now;
-          } else {
-            vehicle.lastPositionUpdate = existing.lastPositionUpdate;
-            vehicle.heading = existing.heading;
-            vehicle.reportedHeading = existing.reportedHeading;
-            vehicle.speedAcceleration = existing.speedAcceleration;
-            vehicle.prevLat = existing.prevLat;
-            vehicle.prevLng = existing.prevLng;
-            vehicle.prevHeading = existing.prevHeading;
-            vehicle.animationStart = existing.animationStart;
-
-            const timing = getVehicleTiming(vehicle.mode);
-            if (now - existing.lastPositionUpdate > timing.stationaryThresholdMs) {
-              vehicle.speed = 0;
-            }
-          }
-
-          vehicle.lastUpdate = now;
-        } else {
-          vehicle.lastUpdate = now;
-          vehicle.lastPositionUpdate = now;
-        }
+        processVehicleUpdate(vehicle, existing, now);
         vehicles.set(vehicle.vehicleId, vehicle);
       }
 

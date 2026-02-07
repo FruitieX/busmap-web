@@ -3,7 +3,8 @@ import Map, { Marker, Source, Layer, AttributionControl } from 'react-map-gl/map
 import type { LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification, MapRef, ViewStateChangeEvent, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { AnimatePresence } from 'framer-motion';
 import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore } from '@/stores';
-import { useAnimatedPosition, extrapolate } from './VehicleMarker';
+import { useAnimatedPosition } from './VehicleMarker';
+import { extrapolate, interpolateVehicle, pruneInterpolationStates } from '@/lib/interpolation';
 import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
 import type { TrackedVehicle, RoutePattern, Route } from '@/types';
@@ -355,6 +356,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
   useEffect(() => {
     const PING_DURATION_MS = 750; // Duration of ping animation after update (matches typical 1s update rate)
+    const PRUNE_INTERVAL_MS = 10_000;
+    let lastPrune = 0;
     
     const animate = () => {
       const now = Date.now();
@@ -381,9 +384,15 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         return Math.max(2, baseTextSize * labelScale);
       };
 
+      // Periodically prune stale interpolation states to avoid memory leaks
+      if (now - lastPrune > PRUNE_INTERVAL_MS) {
+        lastPrune = now;
+        const activeIds = new Set(currentVehicles.map((v) => v.vehicleId));
+        pruneInterpolationStates(activeIds);
+      }
+
       for (const vehicle of currentVehicles) {
         const timing = getVehicleTiming(vehicle.mode);
-        const timeSinceUpdate = now - vehicle.lastPositionUpdate;
 
         // Calculate staleness
         const age = now - vehicle.lastUpdate;
@@ -413,26 +422,21 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         }
         opacity *= routeFadeFactor;
 
-        // Determine position (extrapolate if animating)
-        let lat = vehicle.lat;
-        let lng = vehicle.lng;
+        // Determine interpolated position and heading (extrapolation + smooth correction)
+        let lat: number;
+        let lng: number;
+        let heading: number;
 
-        if (animateVehicles && timeSinceUpdate <= timing.maxExtrapolateMs && vehicle.speed >= 0.3) {
-          const predicted = extrapolate(
-            vehicle.lat,
-            vehicle.lng,
-            vehicle.heading,
-            vehicle.reportedHeading ?? vehicle.heading,
-            vehicle.speed,
-            vehicle.speedAcceleration ?? vehicle.acceleration ?? 0,
-            timeSinceUpdate / 1000,
-          );
-          lat = predicted.lat;
-          lng = predicted.lng;
+        if (animateVehicles) {
+          const interpolated = interpolateVehicle(vehicle, now);
+          lat = interpolated.lat;
+          lng = interpolated.lng;
+          heading = interpolated.heading;
+        } else {
+          lat = vehicle.lat;
+          lng = vehicle.lng;
+          heading = vehicle.heading;
         }
-        
-        // Use raw API heading for arrow direction
-        const heading = vehicle.heading;
 
         // Determine color
         const isSubscribed = subscribedRouteIds.has(`HSL:${vehicle.routeId}`) || subscribedRouteIds.has(vehicle.routeShortName);

@@ -76,14 +76,6 @@ export interface VehiclePosition {
 
 // Tracked vehicle with animation state
 export interface TrackedVehicle extends VehiclePosition {
-  // Previous position for animation
-  prevLat?: number;
-  prevLng?: number;
-  prevHeading?: number;
-
-  // Animation timestamp
-  animationStart?: number;
-
   // Derived motion rates (computed from consecutive samples)
   reportedHeading?: number; // raw heading from GPS/compass
   speedAcceleration?: number; // m/s² (observed speed change rate)
