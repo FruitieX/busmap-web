@@ -67,7 +67,18 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<SheetTab>('vehicles');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [sheetHeight, setSheetHeight] = useState(340); // Track bottom sheet height
+  const [sheetHeight, setSheetHeight] = useState(340);
+  const expandSheetRef = useRef<(() => void) | null>(null);
+  const vehicleCount = useVehicleStore((state) => state.vehicles.size);
+
+  const switchTab = useCallback((tab: SheetTab) => {
+    if (sheetHeight < 160) {
+      expandSheetRef.current?.();
+      requestAnimationFrame(() => setActiveTab(tab));
+    } else {
+      setActiveTab(tab);
+    }
+  }, [sheetHeight]);
 
   const showNearby = useSettingsStore((state) => state.showNearby);
   const nearbyRadius = useSettingsStore((state) => state.nearbyRadius);
@@ -299,6 +310,7 @@ const App = () => {
         maxHeight={500}
         defaultHeight={340}
         onHeightChange={(h) => { setSheetHeight(h); setBottomPadding(h); }}
+        onExpand={(expand) => { expandSheetRef.current = expand; }}
         header={
           <div className="flex items-center gap-2 mb-3 pt-1">
             <button
@@ -307,9 +319,9 @@ const App = () => {
                   ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
-              onClick={() => setActiveTab('vehicles')}
+              onClick={() => switchTab('vehicles')}
             >
-              Vehicles
+              Vehicles ({vehicleCount})
             </button>
             <button
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -317,7 +329,7 @@ const App = () => {
                   ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
-              onClick={() => setActiveTab('routes')}
+              onClick={() => switchTab('routes')}
             >
               Routes ({subscribedRoutes.length})
             </button>

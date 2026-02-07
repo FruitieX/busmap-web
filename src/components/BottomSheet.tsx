@@ -9,6 +9,7 @@ interface BottomSheetProps {
   defaultHeight?: number;
   onHeightChange?: (height: number) => void;
   onClose?: () => void;
+  onExpand?: (expand: () => void) => void;
 }
 
 export const BottomSheet = ({
@@ -19,6 +20,7 @@ export const BottomSheet = ({
   defaultHeight = 340,
   onHeightChange,
   onClose,
+  onExpand,
 }: BottomSheetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
@@ -26,6 +28,22 @@ export const BottomSheet = ({
   const y = useMotionValue(0);
   // height = defaultHeight - y: dragging down (positive y) shrinks, dragging up (negative y) grows
   const height = useTransform(y, [defaultHeight - minHeight, -(maxHeight - defaultHeight)], [minHeight, maxHeight]);
+
+  const expand = useCallback(() => {
+    const threshold = 160;
+    if (height.get() < threshold) {
+      animate(y, 0, {
+        type: 'spring',
+        stiffness: 400,
+        damping: 40,
+        mass: 0.5,
+      });
+    }
+  }, [y, height]);
+
+  useEffect(() => {
+    onExpand?.(expand);
+  }, [expand, onExpand]);
 
   // Report height changes during drag
   useEffect(() => {
