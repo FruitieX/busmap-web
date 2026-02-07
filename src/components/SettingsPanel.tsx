@@ -289,7 +289,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                 </h3>
                 <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
                   <p>
-                    <strong>busmap</strong> - Real-time public transport tracker
+                    <strong>busmap</strong> v{__APP_VERSION__} - Real-time public transport tracker
                   </p>
                   <p>
                     Developed by <a href="https://github.com/FruitieX" target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">Rasmus Lövegren</a>
