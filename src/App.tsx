@@ -130,9 +130,11 @@ const App = () => {
 
   // Get user location for nearby mode - only extract lat/lng to avoid spam from timestamp changes
   const userLocation = useLocationStore((state) => state.userLocation);
+  const lastKnownLocation = useLocationStore((state) => state.lastKnownLocation);
+  const effectiveLocation = userLocation ?? lastKnownLocation;
   const userCoords = useMemo(
-    () => userLocation ? { lat: userLocation.latitude, lng: userLocation.longitude } : null,
-    [userLocation?.latitude, userLocation?.longitude]
+    () => effectiveLocation ? { lat: effectiveLocation.latitude, lng: effectiveLocation.longitude } : null,
+    [effectiveLocation?.latitude, effectiveLocation?.longitude]
   );
 
   // Handle nearby mode - additive, shows vehicles near user location
