@@ -23,6 +23,40 @@ export const KM_IN_METERS = 1_000;
 export const DELAY_LATE_THRESHOLD = 60;
 export const DELAY_EARLY_THRESHOLD = -60;
 
+// Vehicle timing — modes with slow update intervals (e.g. ferry ~10s) need larger thresholds
+export interface VehicleTiming {
+  fadeStartMs: number;
+  fadeEndMs: number;
+  maxExtrapolateMs: number;
+  staleTimeoutMs: number;
+  correctionMs: number;
+  stationaryThresholdMs: number;
+  maxAccelDtSeconds: number;
+}
+
+const DEFAULT_TIMING: VehicleTiming = {
+  fadeStartMs: 5_000,
+  fadeEndMs: 10_000,
+  maxExtrapolateMs: 5_000,
+  staleTimeoutMs: 10_000,
+  correctionMs: 800,
+  stationaryThresholdMs: 3_000,
+  maxAccelDtSeconds: 10,
+};
+
+const SLOW_UPDATE_TIMING: VehicleTiming = {
+  fadeStartMs: 15_000,
+  fadeEndMs: 30_000,
+  maxExtrapolateMs: 15_000,
+  staleTimeoutMs: 30_000,
+  correctionMs: 2_000,
+  stationaryThresholdMs: 15_000,
+  maxAccelDtSeconds: 20,
+};
+
+export const getVehicleTiming = (mode: string): VehicleTiming =>
+  mode === 'ferry' ? SLOW_UPDATE_TIMING : DEFAULT_TIMING;
+
 // Map
 export const TOP_BAR_HEIGHT = 48;
 export const VEHICLE_FLY_TO_ZOOM = 16;

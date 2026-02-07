@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type { TrackedVehicle, ConnectionStatus } from '@/types';
-
-const STALE_TIMEOUT = 10_000;
+import { getVehicleTiming } from '@/constants';
 
 // Duration for exit animation in ms
 const EXIT_ANIMATION_MS = 300;
@@ -85,7 +84,8 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
 
           // Compute speed acceleration from consecutive samples
           const dt = (Date.now() - existing.lastPositionUpdate) / 1000;
-          if (dt > 0 && dt < 10) {
+          const timing = getVehicleTiming(vehicle.mode);
+          if (dt > 0 && dt < timing.maxAccelDtSeconds) {
             vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
           } else {
             vehicle.speedAcceleration = 0;
@@ -103,9 +103,9 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
           vehicle.prevHeading = existing.prevHeading;
           vehicle.animationStart = existing.animationStart;
 
-          // Override speed to 0 if position hasn't changed for >3s
-          // (API sometimes reports stale non-zero speed, e.g. metro at stations)
-          if (Date.now() - existing.lastPositionUpdate > 3000) {
+          // Override speed to 0 if position hasn't changed for longer than expected update interval
+          const timing = getVehicleTiming(vehicle.mode);
+          if (Date.now() - existing.lastPositionUpdate > timing.stationaryThresholdMs) {
             vehicle.speed = 0;
           }
         }
@@ -137,7 +137,8 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
 
       for (const [id, vehicle] of vehicles) {
         // Remove if stale OR if exit animation has completed
-        const isStale = now - vehicle.lastUpdate > STALE_TIMEOUT;
+        const timing = getVehicleTiming(vehicle.mode);
+        const isStale = now - vehicle.lastUpdate > timing.staleTimeoutMs;
         const exitComplete = vehicle.exitingAt && now - vehicle.exitingAt > EXIT_ANIMATION_MS;
         if (isStale || exitComplete) {
           vehicles.delete(id);

@@ -2,16 +2,9 @@ import { memo, useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import type { TrackedVehicle } from '@/types';
 import { useSubscriptionStore, useLocationStore, useSettingsStore } from '@/stores';
 import { TRANSPORT_COLORS } from '@/types';
+import { getVehicleTiming } from '@/constants';
 
-// Staleness thresholds
-const FADE_START_MS = 5000;
-const FADE_END_MS = 10000;
 const EXIT_ANIMATION_MS = 300;
-
-// Exponential decay time for additive correction offset
-const CORRECTION_MS = 800;
-// Max extrapolation time to prevent runaway prediction if updates stop
-const MAX_EXTRAPOLATE_MS = 5000;
 
 // Meters per degree at a given latitude
 const metersPerDegreeLat = 111_320;
@@ -54,6 +47,7 @@ export interface AnimatedPosition {
 
 export const useAnimatedPosition = (vehicle: TrackedVehicle): AnimatedPosition => {
   const animateVehicles = useSettingsStore((state) => state.animateVehicles);
+  const timing = getVehicleTiming(vehicle.mode);
   const rafRef = useRef<number>(0);
 
   // Additive correction offset that decays over time
@@ -93,7 +87,7 @@ export const useAnimatedPosition = (vehicle: TrackedVehicle): AnimatedPosition =
     const timeSinceUpdate = now - vehicle.lastPositionUpdate;
 
     // Don't extrapolate if data is too stale or vehicle is stopped
-    if (timeSinceUpdate > MAX_EXTRAPOLATE_MS || (vehicle.speed < 0.3 && (vehicle.acceleration ?? 0) <= 0)) {
+    if (timeSinceUpdate > timing.maxExtrapolateMs || (vehicle.speed < 0.3 && (vehicle.acceleration ?? 0) <= 0)) {
       setPos({ lat: vehicle.lat, lng: vehicle.lng, heading: vehicle.heading });
       rafRef.current = requestAnimationFrame(animate);
       return;
@@ -114,7 +108,7 @@ export const useAnimatedPosition = (vehicle: TrackedVehicle): AnimatedPosition =
     // Apply decaying additive offset for smooth correction
     const offset = offsetRef.current;
     const correctionAge = now - offsetTimeRef.current;
-    const decay = correctionAge < CORRECTION_MS ? Math.exp(-4 * correctionAge / CORRECTION_MS) : 0;
+    const decay = correctionAge < timing.correctionMs ? Math.exp(-4 * correctionAge / timing.correctionMs) : 0;
 
     const finalLat = predicted.lat + offset.lat * decay;
     const finalLng = predicted.lng + offset.lng * decay;
@@ -122,7 +116,7 @@ export const useAnimatedPosition = (vehicle: TrackedVehicle): AnimatedPosition =
 
     setPos({ lat: finalLat, lng: finalLng, heading: finalHeading });
     rafRef.current = requestAnimationFrame(animate);
-  }, [vehicle.lat, vehicle.lng, vehicle.heading, vehicle.speed, vehicle.acceleration, vehicle.speedAcceleration, vehicle.lastPositionUpdate, animateVehicles]);
+  }, [vehicle.lat, vehicle.lng, vehicle.heading, vehicle.speed, vehicle.acceleration, vehicle.speedAcceleration, vehicle.lastPositionUpdate, animateVehicles, timing]);
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(animate);
@@ -159,12 +153,13 @@ const VehicleMarkerComponent = ({ vehicle, heading: animatedHeading, size = 32 }
   }, [now, vehicle.exitingAt]);
 
   // Calculate staleness (0 = fresh, 1 = fully stale)
+  const timing = getVehicleTiming(vehicle.mode);
   const staleness = useMemo(() => {
     const age = now - vehicle.lastUpdate;
-    if (age <= FADE_START_MS) return 0;
-    if (age >= FADE_END_MS) return 1;
-    return (age - FADE_START_MS) / (FADE_END_MS - FADE_START_MS);
-  }, [now, vehicle.lastUpdate]);
+    if (age <= timing.fadeStartMs) return 0;
+    if (age >= timing.fadeEndMs) return 1;
+    return (age - timing.fadeStartMs) / (timing.fadeEndMs - timing.fadeStartMs);
+  }, [now, vehicle.lastUpdate, timing]);
 
   // Scale ping based on zoom level (smaller when zoomed out)
   const pingScale = useMemo(() => {
