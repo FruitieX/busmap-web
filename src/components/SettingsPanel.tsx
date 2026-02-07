@@ -290,9 +290,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                 <div className="rounded-xl border-2 border-gray-200 dark:border-gray-700 p-4 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center shrink-0">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h.01M8 11h.01M8 15h.01M12 7h.01M12 11h.01M12 15h.01M17 3H7a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V5a2 2 0 00-2-2z" />
-                      </svg>
+                      <img src="/icon.png" alt="busmap" />
                     </div>
                     <div>
                       <div className="font-semibold text-gray-900 dark:text-white">busmap</div>

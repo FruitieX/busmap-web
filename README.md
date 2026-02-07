@@ -1,4 +1,4 @@
-# busmap
+# <img src="public/icon.png" alt="icon" width="48" height="48" style="display: inline;vertical-align: middle; margin-right: 4px; margin-bottom: 6px;"> busmap
 
 Real-time public transport vehicle tracker. Track buses, trams, metros, trains, and ferries live on the map.
 
