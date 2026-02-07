@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore, useSubscriptionStore } from '@/stores';
 import { MAP_STYLES } from '@/types';
@@ -68,6 +68,28 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
   const clearAllSubscriptions = useSubscriptionStore((state) => state.clearAllSubscriptions);
   const subscribedCount = useSubscriptionStore((state) => state.subscribedRoutes.length);
+
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date'>('idle');
+
+  const checkForUpdates = useCallback(async () => {
+    setUpdateStatus('checking');
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (registration) {
+        await registration.update();
+        // If no waiting worker appeared, we're up to date
+        if (!registration.waiting) {
+          setUpdateStatus('up-to-date');
+          setTimeout(() => setUpdateStatus('idle'), 3000);
+        }
+      } else {
+        setUpdateStatus('up-to-date');
+        setTimeout(() => setUpdateStatus('idle'), 3000);
+      }
+    } catch {
+      setUpdateStatus('idle');
+    }
+  }, []);
 
   return (
     <AnimatePresence>
@@ -322,6 +344,36 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       </div>
                     </div>
                   </div>
+
+                  <button
+                    onClick={checkForUpdates}
+                    disabled={updateStatus === 'checking'}
+                    className="flex items-center justify-center gap-2 w-full p-2.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors text-sm font-medium disabled:opacity-50"
+                  >
+                    {updateStatus === 'checking' ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Checking...
+                      </>
+                    ) : updateStatus === 'up-to-date' ? (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Up to date
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Check for updates
+                      </>
+                    )}
+                  </button>
 
                   <a
                     href="https://github.com/FruitieX/busmap-web"
