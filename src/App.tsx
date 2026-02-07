@@ -161,8 +161,7 @@ const App = () => {
 
   useEffect(() => {
     if (!showNearby) {
-      mqttService.unsubscribeFromNearbyArea();
-      mqttService.setNearbyFilter(null, 0);
+      mqttService.clearNearby();
       // Animate out all nearby-only vehicles
       clearNearbyVehicles();
       return;
@@ -190,8 +189,9 @@ const App = () => {
     };
 
     console.log(`Nearby mode: subscribing to ${debouncedRadius}m radius around`, userCoords);
-    mqttService.setNearbyFilter(userCoords, debouncedRadius); // For client-side circular filtering
-    mqttService.subscribeToNearbyArea(bounds);
+    // Use atomic configureNearby to handle connection timing - if MQTT isn't
+    // connected yet, it will store the config and apply it when connected
+    mqttService.configureNearby(bounds, userCoords, debouncedRadius);
   }, [showNearby, userCoords, debouncedRadius, markNearbyVehiclesForExit, clearNearbyVehicles]);
 
   // Handle route selection - uses getState() to avoid dependency on subscribedRoutes

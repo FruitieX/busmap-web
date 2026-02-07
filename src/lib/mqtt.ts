@@ -35,12 +35,19 @@ interface HfpPayload {
   };
 }
 
+interface PendingNearbyConfig {
+  bounds: BoundingBox;
+  center: { lat: number; lng: number };
+  radius: number;
+}
+
 class MqttService {
   private client: MqttClient | null = null;
   private subscriptions = new Set<string>();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private currentNearbyTopics: string[] = [];
+  private pendingNearbyConfig: PendingNearbyConfig | null = null;
 
   private vehicleBuffer: TrackedVehicle[] = [];
   private flushScheduled = false;
@@ -73,6 +80,15 @@ class MqttService {
         this.subscriptions.forEach((topic) => {
           this.client?.subscribe(topic, { qos: 0 });
         });
+
+        // Apply pending nearby config if any (fixes race condition on initial load)
+        if (this.pendingNearbyConfig) {
+          const { bounds, center, radius } = this.pendingNearbyConfig;
+          this.pendingNearbyConfig = null;
+          this.setNearbyFilter(center, radius);
+          this.subscribeToNearbyArea(bounds);
+          console.log('Applied pending nearby config after connection established');
+        }
 
         resolve();
       });
@@ -239,6 +255,33 @@ class MqttService {
   setNearbyFilter(center: { lat: number; lng: number } | null, radius: number) {
     this.nearbyCenter = center;
     this.nearbyRadius = radius;
+  }
+
+  /**
+   * Configure nearby mode atomically - handles connection timing internally.
+   * If MQTT is not yet connected, stores the config and applies it on connect.
+   * This fixes the race condition where nearby mode is enabled before MQTT connects.
+   */
+  configureNearby(bounds: BoundingBox, center: { lat: number; lng: number }, radius: number) {
+    if (!this.client?.connected) {
+      // Store config to apply when connection is established
+      this.pendingNearbyConfig = { bounds, center, radius };
+      console.log('MQTT not connected, storing nearby config for later');
+      return;
+    }
+
+    // Apply immediately if connected
+    this.setNearbyFilter(center, radius);
+    this.subscribeToNearbyArea(bounds);
+  }
+
+  /**
+   * Clear nearby mode configuration, including any pending config.
+   */
+  clearNearby() {
+    this.pendingNearbyConfig = null;
+    this.unsubscribeFromNearbyArea();
+    this.setNearbyFilter(null, 0);
   }
 
   private scheduleFlush() {
