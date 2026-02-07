@@ -186,7 +186,9 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   // Keep selected vehicle centered on an interval
   const isAnimatingRef = useRef(false);
   const lastCenterTimeRef = useRef(0);
-  
+
+  const MAX_TRACKING_ZOOM = 16.5;
+
   useEffect(() => {
     if (!selectedVehicle || !mapRef.current) return;
     if (isAnimatingRef.current) return;
@@ -198,10 +200,29 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     if (!map || !map.loaded()) return;
 
     lastCenterTimeRef.current = now;
+
+    const duration = 1000;
+
+    // Predict where the vehicle will be when the animation ends
+    let center: [number, number] = [selectedVehicle.lng, selectedVehicle.lat];
+    if (selectedVehicle.speed > 0.3) {
+      const predicted = extrapolate(
+        selectedVehicle.lat,
+        selectedVehicle.lng,
+        selectedVehicle.heading,
+        selectedVehicle.reportedHeading ?? selectedVehicle.heading,
+        selectedVehicle.speed,
+        selectedVehicle.speedAcceleration ?? selectedVehicle.acceleration ?? 0,
+        (now - selectedVehicle.lastPositionUpdate + duration) / 1000,
+      );
+      center = [predicted.lng, predicted.lat];
+    }
+
     map.easeTo({
-      center: [selectedVehicle.lng, selectedVehicle.lat],
+      center,
+      zoom: Math.min(map.getZoom(), MAX_TRACKING_ZOOM),
       padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
-      duration: 1000,
+      duration,
     });
   }, [selectedVehicle?.lng, selectedVehicle?.lat, bottomPadding]);
 
@@ -411,7 +432,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     isAnimatingRef.current = true;
     mapRef.current.flyTo({
       center,
-      zoom: Math.max(mapRef.current.getMap()?.getZoom() ?? 15, 15),
+      zoom: Math.min(Math.max(mapRef.current.getMap()?.getZoom() ?? 15, 15), MAX_TRACKING_ZOOM),
       duration,
       padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
     });
