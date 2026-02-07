@@ -77,10 +77,15 @@ const VehicleCard = memo(
         <motion.div
           ref={ref}
           layout
-          initial={false}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, x: -100 }}
-          className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
+          transition={{
+            layout: { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 },
+            opacity: { duration: 0.15 },
+            scale: { duration: 0.15 },
+          }}
+          className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
           onClick={onCardClick}
         >
         <div className="flex items-center gap-2 min-[425px]:gap-3">
@@ -229,7 +234,7 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
 
   return (
     <div className="space-y-2 px-0.5 py-0.5">
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence mode="popLayout" initial={false}>
         {sortedVehicles.map(({ vehicle, distance, isSubscribed }) => (
           <VehicleCard
             key={vehicle.vehicleId}

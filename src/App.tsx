@@ -409,7 +409,7 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
 
   return (
     <div className="space-y-2 px-0.5 py-0.5">
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence mode="popLayout" initial={false}>
         {routes.map((route) => {
           const color = route.color || TRANSPORT_COLORS[route.mode] || TRANSPORT_COLORS.bus;
           const isSelected = selectedRouteId === route.gtfsId;
@@ -419,10 +419,15 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
             <motion.div
               key={route.gtfsId}
               layout
-              initial={false}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, x: -100 }}
-              className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-2 min-[425px]:gap-3 cursor-pointer transition-all hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
+              transition={{
+                layout: { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 },
+                opacity: { duration: 0.15 },
+                scale: { duration: 0.15 },
+              }}
+              className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-2 min-[425px]:gap-3 cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
               onClick={() => onRouteClick?.(route)}
             >
               <div
