@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import type { TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useSubscriptionStore, useSettingsStore } from '@/stores';
+import { MPS_TO_KMPH, DELAY_LATE_THRESHOLD, DELAY_EARLY_THRESHOLD } from '@/constants';
 
 interface VehiclePopoverProps {
   vehicle: TrackedVehicle;
@@ -20,7 +21,7 @@ const formatDelay = (delaySeconds: number): string => {
 };
 
 const formatSpeed = (mps: number): string => {
-  const kmh = Math.round(mps * 3.6);
+  const kmh = Math.round(mps * MPS_TO_KMPH);
   return `${kmh} km/h`;
 };
 
@@ -54,9 +55,9 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe 
   }, [subscribedRoutes, vehicle.routeId, vehicle.routeShortName, vehicle.mode]);
 
   const delayClass =
-    vehicle.delay > 60
+    vehicle.delay > DELAY_LATE_THRESHOLD
       ? 'text-red-500'
-      : vehicle.delay < -60
+      : vehicle.delay < DELAY_EARLY_THRESHOLD
         ? 'text-green-500'
         : 'text-gray-600 dark:text-gray-400';
 

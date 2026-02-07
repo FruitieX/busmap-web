@@ -8,6 +8,7 @@ import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
 import type { TrackedVehicle, RoutePattern, Route } from '@/types';
 import type { FeatureCollection, LineString, Polygon } from 'geojson';
+import { TOP_BAR_HEIGHT } from '@/constants';
 
 import { MAP_STYLES } from '@/types';
 
@@ -173,7 +174,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           bearing: pendingFlyTo.bearing ?? map.getBearing(),
           pitch: pendingFlyTo.pitch ?? map.getPitch(),
           duration,
-          padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
+          padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
         });
         setTimeout(() => { isAnimatingRef.current = false; }, duration);
       }
@@ -221,7 +222,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     map.easeTo({
       center,
       zoom: Math.min(map.getZoom(), MAX_TRACKING_ZOOM),
-      padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
+      padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
       duration,
     });
   }, [selectedVehicle?.lng, selectedVehicle?.lat, bottomPadding]);
@@ -434,7 +435,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       center,
       zoom: Math.min(Math.max(mapRef.current.getMap()?.getZoom() ?? 15, 15), MAX_TRACKING_ZOOM),
       duration,
-      padding: { top: 48, left: 0, right: 0, bottom: bottomPadding },
+      padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
     });
     setTimeout(() => { isAnimatingRef.current = false; }, 1000);
   }, [selectedVehicle?.vehicleId]); // eslint-disable-line react-hooks/exhaustive-deps

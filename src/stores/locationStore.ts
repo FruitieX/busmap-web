@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { UserLocation, MapViewport } from '@/types';
 import { useSettingsStore } from './settingsStore';
 
+import { SHEET_DEFAULT_HEIGHT, TOP_BAR_HEIGHT, METERS_PER_DEGREE_LAT } from '@/constants';
+
 const LAST_LOCATION_KEY = 'busmap-last-location';
 
 const loadLastLocation = (): { latitude: number; longitude: number } | null => {
@@ -18,8 +20,6 @@ const saveLastLocation = (latitude: number, longitude: number) => {
   localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ latitude, longitude }));
 };
 
-const TOP_BAR_HEIGHT = 48; // 40px bar + 8px padding
-
 /** Convert a radius in meters to a map zoom level that fits the circle on screen. */
 export const radiusToZoom = (radiusMeters: number, latitude: number, bottomPadding = 0): number => {
   const earthCircumference = 40075016.686;
@@ -31,23 +31,21 @@ export const radiusToZoom = (radiusMeters: number, latitude: number, bottomPaddi
   return Math.log2(metersPerPixelAtZoom0 / metersPerPixel);
 };
 
-const DEFAULT_BOTTOM_PADDING = 340;
-
 /** Offset latitude so the target point appears at the center of visible area (accounting for top/bottom padding). */
 const offsetLatForPadding = (latitude: number, zoom: number, topPadding: number, bottomPadding: number): number => {
   const pixelOffset = (bottomPadding - topPadding) / 2;
   const earthCircumference = 40075016.686;
   const metersPerPixel = earthCircumference * Math.cos(latitude * Math.PI / 180) / (512 * Math.pow(2, zoom));
-  return latitude - (pixelOffset * metersPerPixel) / 111320;
+  return latitude - (pixelOffset * metersPerPixel) / METERS_PER_DEGREE_LAT;
 };
 
 // Default viewport restored from last user location, or Helsinki as fallback
 const lastLocation = loadLastLocation();
 const defaultLat = lastLocation?.latitude ?? 60.17;
 const defaultLng = lastLocation?.longitude ?? 24.94;
-const defaultZoom = radiusToZoom(useSettingsStore.getState().locationRadius, defaultLat, DEFAULT_BOTTOM_PADDING);
+const defaultZoom = radiusToZoom(useSettingsStore.getState().locationRadius, defaultLat, SHEET_DEFAULT_HEIGHT);
 const DEFAULT_VIEWPORT: MapViewport = {
-  latitude: offsetLatForPadding(defaultLat, defaultZoom, TOP_BAR_HEIGHT, DEFAULT_BOTTOM_PADDING),
+  latitude: offsetLatForPadding(defaultLat, defaultZoom, TOP_BAR_HEIGHT, SHEET_DEFAULT_HEIGHT),
   longitude: defaultLng,
   zoom: defaultZoom,
   bearing: 0,
@@ -80,7 +78,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   locationError: null,
   isLocating: false,
   viewport: DEFAULT_VIEWPORT,
-  bottomPadding: 340,
+  bottomPadding: SHEET_DEFAULT_HEIGHT,
   pendingFlyTo: null,
 
   setUserLocation: (userLocation) => {

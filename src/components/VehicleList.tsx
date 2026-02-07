@@ -3,6 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useVehicleStore, useSubscriptionStore, useLocationStore } from '@/stores';
+import {
+  EARTH_RADIUS_M,
+  MPS_TO_KMPH,
+  KM_IN_METERS,
+  DELAY_LATE_THRESHOLD,
+  DELAY_EARLY_THRESHOLD,
+  CARD_ENTER_TRANSITION,
+  VEHICLE_FLY_TO_ZOOM,
+} from '@/constants';
 
 interface VehicleListProps {
   selectedVehicleId?: string | null;
@@ -29,12 +38,12 @@ const formatDelay = (delaySeconds: number): string => {
 };
 
 const formatDistance = (meters: number): string => {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
+  if (meters < KM_IN_METERS) return `${Math.round(meters)} m`;
+  return `${(meters / KM_IN_METERS).toFixed(1)} km`;
 };
 
 const formatSpeed = (mps: number): string => {
-  const kmh = Math.round(mps * 3.6);
+  const kmh = Math.round(mps * MPS_TO_KMPH);
   return `${kmh} km/h`;
 };
 
@@ -44,7 +53,7 @@ const calculateDistance = (
   lat2: number,
   lon2: number
 ): number => {
-  const R = 6371000; // Earth's radius in meters
+  const R = EARTH_RADIUS_M;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -67,9 +76,9 @@ const VehicleCard = memo(
       const color = subscribed?.color || TRANSPORT_COLORS[vehicle.mode] || TRANSPORT_COLORS.bus;
 
       const delayClass =
-        vehicle.delay > 60
+        vehicle.delay > DELAY_LATE_THRESHOLD
           ? 'text-red-500'
-          : vehicle.delay < -60
+          : vehicle.delay < DELAY_EARLY_THRESHOLD
             ? 'text-green-500'
             : 'text-gray-500 dark:text-gray-400';
 
@@ -80,11 +89,7 @@ const VehicleCard = memo(
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, x: -100 }}
-          transition={{
-            layout: { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 },
-            opacity: { duration: 0.15 },
-            scale: { duration: 0.15 },
-          }}
+          transition={CARD_ENTER_TRANSITION}
           className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
           onClick={onCardClick}
         >
@@ -194,7 +199,7 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
 
   const handleCardClick = useCallback(
     (vehicle: TrackedVehicle) => {
-      flyToLocation(vehicle.lat, vehicle.lng, 16);
+      flyToLocation(vehicle.lat, vehicle.lng, VEHICLE_FLY_TO_ZOOM);
       onVehicleClick?.(vehicle);
     },
     [flyToLocation, onVehicleClick]

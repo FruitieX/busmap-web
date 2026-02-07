@@ -20,6 +20,14 @@ import {
 import { mqttService, useRoutePatterns } from '@/lib';
 import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, RoutePattern } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
+import {
+  SHEET_MIN_HEIGHT,
+  SHEET_MAX_HEIGHT,
+  SHEET_DEFAULT_HEIGHT,
+  SHEET_EXPAND_THRESHOLD,
+  CARD_ENTER_TRANSITION,
+  FAB_TOP_OFFSET,
+} from '@/constants';
 
 
 const SettingsIcon = () => (
@@ -67,12 +75,12 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<SheetTab>('vehicles');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [sheetHeight, setSheetHeight] = useState(340);
+  const [sheetHeight, setSheetHeight] = useState(SHEET_DEFAULT_HEIGHT);
   const expandSheetRef = useRef<(() => void) | null>(null);
   const vehicleCount = useVehicleStore((state) => state.vehicles.size);
 
   const switchTab = useCallback((tab: SheetTab) => {
-    if (sheetHeight < 160) {
+    if (sheetHeight < SHEET_EXPAND_THRESHOLD) {
       expandSheetRef.current?.();
       requestAnimationFrame(() => setActiveTab(tab));
     } else {
@@ -278,7 +286,7 @@ const App = () => {
       <StatusBar onSelectRoute={handleSelectRoute} />
 
       {/* Floating action buttons - top right corner */}
-      <div className="fixed right-4 z-30 flex flex-col gap-2" style={{ top: 72 }}>
+      <div className="fixed right-4 z-30 flex flex-col gap-2" style={{ top: FAB_TOP_OFFSET }}>
         <FloatingActionButton
           icon={<ZoomInIcon />}
           onClick={handleZoomIn}
@@ -306,9 +314,9 @@ const App = () => {
 
       {/* Bottom sheet with tabs */}
       <BottomSheet
-        minHeight={80}
-        maxHeight={500}
-        defaultHeight={340}
+        minHeight={SHEET_MIN_HEIGHT}
+        maxHeight={SHEET_MAX_HEIGHT}
+        defaultHeight={SHEET_DEFAULT_HEIGHT}
         onHeightChange={(h) => { setSheetHeight(h); setBottomPadding(h); }}
         onExpand={(expand) => { expandSheetRef.current = expand; }}
         header={
@@ -434,11 +442,7 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, x: -100 }}
-              transition={{
-                layout: { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 },
-                opacity: { duration: 0.15 },
-                scale: { duration: 0.15 },
-              }}
+              transition={CARD_ENTER_TRANSITION}
               className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-2 min-[425px]:gap-3 cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
               onClick={() => onRouteClick?.(route)}
             >

@@ -1,5 +1,12 @@
 import { useRef, useCallback, useEffect, type ReactNode } from 'react';
 import { motion, useMotionValue, useTransform, useDragControls, animate } from 'framer-motion';
+import {
+  SHEET_MIN_HEIGHT,
+  SHEET_MAX_HEIGHT,
+  SHEET_DEFAULT_HEIGHT,
+  SHEET_EXPAND_THRESHOLD,
+  SHEET_SPRING,
+} from '@/constants';
 
 interface BottomSheetProps {
   children: ReactNode;
@@ -15,9 +22,9 @@ interface BottomSheetProps {
 export const BottomSheet = ({
   children,
   header,
-  minHeight = 80,
-  maxHeight = 400,
-  defaultHeight = 340,
+  minHeight = SHEET_MIN_HEIGHT,
+  maxHeight = SHEET_MAX_HEIGHT,
+  defaultHeight = SHEET_DEFAULT_HEIGHT,
   onHeightChange,
   onClose,
   onExpand,
@@ -30,14 +37,8 @@ export const BottomSheet = ({
   const height = useTransform(y, [defaultHeight - minHeight, -(maxHeight - defaultHeight)], [minHeight, maxHeight]);
 
   const expand = useCallback(() => {
-    const threshold = 160;
-    if (height.get() < threshold) {
-      animate(y, 0, {
-        type: 'spring',
-        stiffness: 400,
-        damping: 40,
-        mass: 0.5,
-      });
+    if (height.get() < SHEET_EXPAND_THRESHOLD) {
+      animate(y, 0, SHEET_SPRING);
     }
   }, [y, height]);
 
@@ -60,12 +61,7 @@ export const BottomSheet = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Animate to minimized position
-        animate(y, defaultHeight - minHeight, {
-          type: 'spring',
-          stiffness: 400,
-          damping: 40,
-          mass: 0.5,
-        });
+        animate(y, defaultHeight - minHeight, SHEET_SPRING);
         onClose?.();
       }
     };

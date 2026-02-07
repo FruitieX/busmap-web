@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { SubscribedRoute, RoutePattern, TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
+import { EARTH_RADIUS_M, KM_IN_METERS } from '@/constants';
 
 interface RoutePopoverProps {
   route: SubscribedRoute;
@@ -12,8 +13,8 @@ interface RoutePopoverProps {
 }
 
 const formatDistance = (meters: number): string => {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
+  if (meters < KM_IN_METERS) return `${Math.round(meters)} m`;
+  return `${(meters / KM_IN_METERS).toFixed(1)} km`;
 };
 
 const calculateRouteLength = (patterns: RoutePattern[]): number => {
@@ -24,7 +25,7 @@ const calculateRouteLength = (patterns: RoutePattern[]): number => {
       const prev = pattern.geometry[i - 1];
       const curr = pattern.geometry[i];
       // Haversine distance
-      const R = 6371000;
+      const R = EARTH_RADIUS_M;
       const dLat = ((curr.lat - prev.lat) * Math.PI) / 180;
       const dLon = ((curr.lon - prev.lon) * Math.PI) / 180;
       const a =
