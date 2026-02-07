@@ -92,7 +92,7 @@ const routeLineStyle: LineLayerSpecification = {
   paint: {
     'line-color': ['get', 'color'],
     'line-width': ['case', ['get', 'isSelected'], 8, 4],
-    'line-opacity': ['case', ['get', 'isSelected'], 1, 0.6],
+    'line-opacity': ['get', 'opacity'],
     'line-dasharray': [2, 2],
   },
   layout: {
@@ -323,6 +323,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const selectedVehicleIdRef = useRef<string | null | undefined>(selectedVehicleId);
   selectedVehicleIdRef.current = selectedVehicleId;
 
+  // Track selected route ID in ref for rAF loop
+  const selectedRouteIdRef = useRef<string | null | undefined>(selectedRouteId);
+  selectedRouteIdRef.current = selectedRouteId;
+
   useEffect(() => {
     const PING_DURATION_MS = 1000; // Duration of ping animation after update (matches typical 1s update rate)
     
@@ -332,6 +336,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       const currentVehicles = vehiclesRef.current;
       const features: Feature<Point, VehicleFeatureProps>[] = [];
       const currentSelectedId = selectedVehicleIdRef.current;
+      const currentSelectedRouteId = selectedRouteIdRef.current;
 
       // Get current zoom for scaling
       const zoom = mapRef.current?.getMap()?.getZoom() ?? 14;
@@ -361,7 +366,18 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           if (exitProgress >= 1) continue;
         }
 
-        const opacity = (1 - staleness) * (1 - exitProgress);
+        // Base opacity from staleness and exit
+        let opacity = (1 - staleness) * (1 - exitProgress);
+        
+        // Fade factor for vehicles not on the selected route
+        let routeFadeFactor = 1;
+        if (currentSelectedRouteId) {
+          const vehicleRouteId = `HSL:${vehicle.routeId}`;
+          if (vehicleRouteId !== currentSelectedRouteId) {
+            routeFadeFactor = 0.1; // Fade non-selected route vehicles
+          }
+        }
+        opacity *= routeFadeFactor;
 
         // Determine position (extrapolate if animating)
         let lat = vehicle.lat;
@@ -404,7 +420,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         if (timeSinceLastUpdate < PING_DURATION_MS) {
           const pingPhase = timeSinceLastUpdate / PING_DURATION_MS;
           pingRadius = (baseRadius + pingPhase * baseRadius * 0.8); // expands from baseRadius
-          pingOpacity = 0.6 * (1 - pingPhase); // fade out
+          pingOpacity = 0.6 * (1 - pingPhase) * routeFadeFactor; // fade out, also apply route fade
         }
 
         const circleRadius = isSelected ? selectedRadius : baseRadius;
@@ -637,6 +653,12 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       const routePatterns = patterns.get(route.gtfsId);
       if (!routePatterns) continue;
       const isSelected = selectedRouteId === route.gtfsId;
+      
+      // When a route is selected, fade out other routes
+      let opacity = isSelected ? 1 : 0.6;
+      if (selectedRouteId && !isSelected) {
+        opacity = 0.1; // Fade non-selected routes when one is selected
+      }
 
       for (const pattern of routePatterns) {
         if (pattern.geometry.length < 2) continue;
@@ -647,6 +669,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             routeId: route.gtfsId,
             color: route.color,
             isSelected,
+            opacity,
           },
           geometry: {
             type: 'LineString',
