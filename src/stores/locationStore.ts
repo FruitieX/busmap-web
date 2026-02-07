@@ -212,8 +212,8 @@ const startWatcher = () => {
     },
     {
       enableHighAccuracy: highAccuracy,
-      timeout: 15_000,
-      maximumAge: 10_000,
+      timeout: highAccuracy ? 15_000 : 10_000,
+      maximumAge: highAccuracy ? 10_000 : 300_000,
     },
   );
 };
