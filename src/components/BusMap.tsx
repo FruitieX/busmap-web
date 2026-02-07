@@ -13,43 +13,59 @@ import { TOP_BAR_HEIGHT, getVehicleTiming } from '@/constants';
 
 import { MAP_STYLES } from '@/types';
 
-// Create arrow image for vehicle heading indicator (chevron shape)
-const createArrowImage = (): HTMLCanvasElement => {
+// Create arrow image for vehicle heading indicator (triangle shape)
+// Takes a fill color and creates an arrow with white outline
+const createArrowImage = (fillColor: string): ImageData => {
   const size = 64; // Higher resolution for crisp rendering
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  
-  // Clear canvas (transparent)
+
+  // Clear canvas (fully transparent)
   ctx.clearRect(0, 0, size, size);
-  
+
   // Draw arrow centered in canvas (for icon-anchor: 'center')
   ctx.translate(size / 2, size / 2);
-  
-  // Scale up the chevron for the larger canvas
+
+  // Scale up the triangle for the larger canvas
   const scale = size / 16;
-  
-  // Chevron shape pointing up
-  ctx.beginPath();
-  ctx.moveTo(0 * scale, -5 * scale);     // top tip
-  ctx.lineTo(5 * scale, 3 * scale);      // right outer
-  ctx.lineTo(3 * scale, 3 * scale);      // right inner
-  ctx.lineTo(0 * scale, -1 * scale);     // center notch
-  ctx.lineTo(-3 * scale, 3 * scale);     // left inner
-  ctx.lineTo(-5 * scale, 3 * scale);     // left outer
-  ctx.closePath();
-  
-  // White fill with dark stroke for visibility on any background
-  ctx.fillStyle = 'white';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.lineWidth = 2;
+
+  // Triangle shape pointing up
+  const drawTriangle = () => {
+    ctx.beginPath();
+    ctx.moveTo(0 * scale, -4 * scale); // top tip
+    ctx.lineTo(8 * scale, 8 * scale); // bottom right
+    ctx.lineTo(-8 * scale, 8 * scale); // bottom left
+    ctx.closePath();
+  };
+
+  // White outline (draw first, wider)
+  drawTriangle();
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 15;
   ctx.lineJoin = 'round';
   ctx.stroke();
-  
-  return canvas;
+
+  // Fill with the vehicle color
+  drawTriangle();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+  return ctx.getImageData(0, 0, size, size);
 };
+
+// Track which arrow colors have been added to the map
+const arrowImageColors = new Set<string>();
+
+// Get arrow image name for a color
+const getArrowImageName = (color: string) => `vehicle-arrow-${color.replace('#', '')}`;
+
+// Track selection animation state per vehicle: { vehicleId: { selected: boolean, startTime: number } }
+interface SelectionAnimState { selected: boolean; startTime: number }
+const selectionAnimState: Record<string, SelectionAnimState> = {};
+const SELECTION_ANIM_DURATION_MS = 200; // Duration of selection scale animation
 
 // Popover height based on screen width (matches Tailwind sm: breakpoint at 640px)
 const getPopoverHeight = (screenWidth: number) => screenWidth < 640 ? 170 : 200;
@@ -134,13 +150,13 @@ const vehicleCircleStyle: CircleLayerSpecification = {
   },
 };
 
-// Vehicle arrow layer - heading indicator (chevron above circle)
+// Vehicle arrow layer - heading indicator (chevron above circle, rendered behind circle)
 const vehicleArrowStyle: SymbolLayerSpecification = {
   id: 'vehicle-arrows',
   type: 'symbol',
   source: 'vehicles',
   layout: {
-    'icon-image': 'vehicle-arrow',
+    'icon-image': ['get', 'arrowImage'],
     'icon-size': ['get', 'arrowSize'],
     'icon-rotate': ['get', 'heading'],
     'icon-rotation-alignment': 'map',
@@ -180,6 +196,7 @@ interface VehicleFeatureProps {
   vehicleId: string;
   routeShortName: string;
   color: string;
+  arrowImage: string;
   opacity: number;
   heading: number;
   isSubscribed: boolean;
@@ -290,34 +307,39 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const vehiclesRef = useRef<TrackedVehicle[]>(vehicles);
   vehiclesRef.current = vehicles;
 
-  // Add arrow image to map
-  const addArrowImage = useCallback(() => {
+  // Add arrow image to map for a specific color
+  const addArrowImageForColor = useCallback((color: string) => {
     const map = mapRef.current?.getMap();
     if (!map) return;
-    if (!map.hasImage('vehicle-arrow')) {
-      const arrowCanvas = createArrowImage();
-      const ctx = arrowCanvas.getContext('2d')!;
-      const imageData = ctx.getImageData(0, 0, arrowCanvas.width, arrowCanvas.height);
-      map.addImage('vehicle-arrow', imageData, { sdf: false });
+    const imageName = getArrowImageName(color);
+    if (!map.hasImage(imageName)) {
+      const imageData = createArrowImage(color);
+      map.addImage(imageName, imageData, { sdf: false });
+      arrowImageColors.add(color);
     }
   }, []);
 
-  // Handle map load - add arrow image
-  const handleMapLoad = useCallback(() => {
-    addArrowImage();
-  }, [addArrowImage]);
+  // Clear arrow image tracking on style changes (images are removed when style changes)
+  const handleStyleLoad = useCallback(() => {
+    arrowImageColors.clear();
+  }, []);
 
-  // Re-add arrow image on style changes
+  // Handle map load
+  const handleMapLoad = useCallback(() => {
+    // Arrow images will be added dynamically as vehicles appear
+  }, []);
+
+  // Re-register style load handler
   useEffect(() => {
     const map = mapRef.current?.getMap();
     if (!map) return;
     
-    map.on('style.load', addArrowImage);
+    map.on('style.load', handleStyleLoad);
     
     return () => {
-      map.off('style.load', addArrowImage);
+      map.off('style.load', handleStyleLoad);
     };
-  }, [addArrowImage]);
+  }, [handleStyleLoad]);
 
   // Track selected vehicle ID in ref for rAF loop
   const selectedVehicleIdRef = useRef<string | null | undefined>(selectedVehicleId);
@@ -326,6 +348,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   // Track selected route ID in ref for rAF loop
   const selectedRouteIdRef = useRef<string | null | undefined>(selectedRouteId);
   selectedRouteIdRef.current = selectedRouteId;
+
+  // Track addArrowImageForColor in ref for rAF loop access
+  const addArrowImageForColorRef = useRef(addArrowImageForColor);
+  addArrowImageForColorRef.current = addArrowImageForColor;
 
   useEffect(() => {
     const PING_DURATION_MS = 750; // Duration of ping animation after update (matches typical 1s update rate)
@@ -343,9 +369,9 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       // Scale factor: 1.0 at zoom 14, smaller when zoomed out, capped when zoomed in
       const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 15) * 0.3));
       const baseRadius = 14 * zoomScale;
-      const selectedRadius = 18 * zoomScale;
+      const selectedScale = 18 / 14; // Ratio of selected to base radius
       const baseTextSize = 15 * zoomScale;
-      const arrowSize = 0.25 * zoomScale; // Base size for 64px arrow icon
+      const baseArrowSize = 0.25 * zoomScale; // Base size for 64px arrow icon
 
       // Scale text size based on label length: shorter labels get larger text
       const getTextSize = (label: string) => {
@@ -420,6 +446,32 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         // Higher sortKey = drawn later = on top
         const sortKey = isSelected ? 1000000 : Math.round((90 - lat) * 10000);
 
+        // Animate selection scale
+        let animState = selectionAnimState[vehicle.vehicleId];
+        let selectionScale = 1;
+        if (animState) {
+          if (animState.selected !== isSelected) {
+            // Selection state changed, start new animation
+            animState = { selected: isSelected, startTime: now };
+            selectionAnimState[vehicle.vehicleId] = animState;
+          }
+          const elapsed = now - animState.startTime;
+          const progress = Math.min(1, elapsed / SELECTION_ANIM_DURATION_MS);
+          // Ease out cubic for smooth deceleration
+          const eased = 1 - Math.pow(1 - progress, 3);
+          if (animState.selected) {
+            // Animating to selected (scale up)
+            selectionScale = 1 + (selectedScale - 1) * eased;
+          } else {
+            // Animating to deselected (scale down)
+            selectionScale = selectedScale - (selectedScale - 1) * eased;
+          }
+        } else {
+          // First time seeing this vehicle, set initial state
+          selectionAnimState[vehicle.vehicleId] = { selected: isSelected, startTime: now - SELECTION_ANIM_DURATION_MS };
+          selectionScale = isSelected ? selectedScale : 1;
+        }
+
         // Per-vehicle ping animation - triggered by lastUpdate, fades over PING_DURATION_MS
         // Show for all vehicles (subscribed and nearby)
         let pingRadius = 0;
@@ -427,11 +479,18 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         const timeSinceLastUpdate = now - vehicle.lastUpdate;
         if (timeSinceLastUpdate < PING_DURATION_MS) {
           const pingPhase = timeSinceLastUpdate / PING_DURATION_MS;
-          pingRadius = (baseRadius + pingPhase * baseRadius * 0.8); // expands from baseRadius
+          pingRadius = (baseRadius * selectionScale + pingPhase * baseRadius * 0.8); // expands from scaled baseRadius
           pingOpacity = 0.6 * (1 - pingPhase) * routeFadeFactor; // fade out, also apply route fade
         }
 
-        const circleRadius = isSelected ? selectedRadius : baseRadius;
+        const circleRadius = baseRadius * selectionScale;
+        const arrowSize = baseArrowSize * selectionScale;
+
+        // Ensure arrow image exists for this color
+        const arrowImage = getArrowImageName(color);
+        if (!arrowImageColors.has(color)) {
+          addArrowImageForColorRef.current(color);
+        }
 
         features.push({
           type: 'Feature',
@@ -439,6 +498,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             vehicleId: vehicle.vehicleId,
             routeShortName: vehicle.routeShortName,
             color,
+            arrowImage,
             opacity,
             heading,
             isSubscribed,
@@ -912,8 +972,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       {/* WebGL layers for all vehicles (including selected) */}
       <Source id="vehicles" type="geojson" data={vehicleGeoJson}>
         <Layer {...vehiclePingStyle} />
-        <Layer {...vehicleCircleStyle} />
         <Layer {...vehicleArrowStyle} />
+        <Layer {...vehicleCircleStyle} />
         <Layer {...vehicleLabelStyle} />
       </Source>
 
