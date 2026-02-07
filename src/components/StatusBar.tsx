@@ -34,6 +34,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const historyPushedRef = useRef(false);
   const keyboardNavRef = useRef(false);
   const { data: routes } = useRoutes();
@@ -51,6 +52,20 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
       inputRef.current?.focus();
     }
   }, [isSearching]);
+
+  // Dismiss search when clicking outside
+  useEffect(() => {
+    if (!isSearching) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        closeSearch();
+      }
+    };
+
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [isSearching, closeSearch]);
 
   // Handle Escape key and back button to close search
   useEffect(() => {
@@ -226,7 +241,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
       animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.2 }}
     >
-      <div className="mx-4 mt-2 pointer-events-auto">
+      <div className="mx-4 mt-2 pointer-events-auto" ref={containerRef}>
         <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm rounded-xl shadow-float px-4 py-2">
           <div className="flex items-center justify-between">
             {/* Connection status / Search */}
