@@ -33,6 +33,7 @@ interface VehicleState {
 
   // Actions
   updateVehicle: (vehicle: TrackedVehicle) => void;
+  updateVehicles: (vehicles: TrackedVehicle[]) => void;
   removeVehicle: (vehicleId: string) => void;
   removeStaleVehicles: () => void;
   clearVehicles: () => void;
@@ -40,7 +41,7 @@ interface VehicleState {
   markNearbyVehiclesForExit: (center: { lat: number; lng: number }, radius: number) => void;
   clearNearbyVehicles: () => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
-  incrementMessageCount: () => void;
+  incrementMessageCount: (count?: number) => void;
 
   // Selectors
   getVehiclesArray: () => TrackedVehicle[];
@@ -126,6 +127,71 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
       const vehicles = new Map(state.vehicles);
       vehicles.delete(vehicleId);
       return { vehicles };
+    });
+  },
+
+  updateVehicles: (vehicleBatch) => {
+    if (vehicleBatch.length === 0) return;
+
+    set((state) => {
+      const vehicles = new Map(state.vehicles);
+      const now = Date.now();
+
+      for (const vehicle of vehicleBatch) {
+        const existing = vehicles.get(vehicle.vehicleId);
+
+        if (existing) {
+          const posChanged = vehicle.lat !== existing.lat || vehicle.lng !== existing.lng;
+
+          if (posChanged) {
+            vehicle.prevLat = existing.lat;
+            vehicle.prevLng = existing.lng;
+            vehicle.prevHeading = existing.heading;
+            vehicle.animationStart = now;
+            vehicle.reportedHeading = vehicle.heading;
+
+            const dlat = vehicle.lat - existing.lat;
+            const dlng = vehicle.lng - existing.lng;
+            const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+            if (dist > 1e-7 && vehicle.speed > 0.3) {
+              const bearing = (Math.atan2(dlng, dlat) * 180) / Math.PI;
+              vehicle.heading = ((bearing % 360) + 360) % 360;
+            }
+
+            const dt = (now - existing.lastPositionUpdate) / 1000;
+            const timing = getVehicleTiming(vehicle.mode);
+            if (dt > 0 && dt < timing.maxAccelDtSeconds) {
+              vehicle.speedAcceleration = Math.max(-5, Math.min(5, (vehicle.speed - existing.speed) / dt));
+            } else {
+              vehicle.speedAcceleration = 0;
+            }
+
+            vehicle.lastPositionUpdate = now;
+          } else {
+            vehicle.lastPositionUpdate = existing.lastPositionUpdate;
+            vehicle.heading = existing.heading;
+            vehicle.reportedHeading = existing.reportedHeading;
+            vehicle.speedAcceleration = existing.speedAcceleration;
+            vehicle.prevLat = existing.prevLat;
+            vehicle.prevLng = existing.prevLng;
+            vehicle.prevHeading = existing.prevHeading;
+            vehicle.animationStart = existing.animationStart;
+
+            const timing = getVehicleTiming(vehicle.mode);
+            if (now - existing.lastPositionUpdate > timing.stationaryThresholdMs) {
+              vehicle.speed = 0;
+            }
+          }
+
+          vehicle.lastUpdate = now;
+        } else {
+          vehicle.lastUpdate = now;
+          vehicle.lastPositionUpdate = now;
+        }
+        vehicles.set(vehicle.vehicleId, vehicle);
+      }
+
+      return { vehicles, messageCount: state.messageCount + vehicleBatch.length };
     });
   },
 
@@ -223,8 +289,8 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
     });
   },
 
-  incrementMessageCount: () => {
-    set((state) => ({ messageCount: state.messageCount + 1 }));
+  incrementMessageCount: (count = 1) => {
+    set((state) => ({ messageCount: state.messageCount + count }));
   },
 
   // Selectors

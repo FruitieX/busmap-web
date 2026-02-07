@@ -1,16 +1,55 @@
-import { useRef, useCallback, useMemo, memo, useEffect } from 'react';
+import { useRef, useCallback, useMemo, memo, useEffect, useState } from 'react';
 import Map, { Marker, Source, Layer, AttributionControl } from 'react-map-gl/maplibre';
-import type { LineLayerSpecification, MapRef, ViewStateChangeEvent } from 'react-map-gl/maplibre';
+import type { LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification, MapRef, ViewStateChangeEvent, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { AnimatePresence } from 'framer-motion';
 import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore } from '@/stores';
-import { VehicleMarker, useAnimatedPosition, extrapolate } from './VehicleMarker';
+import { useAnimatedPosition, extrapolate } from './VehicleMarker';
 import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
 import type { TrackedVehicle, RoutePattern, Route } from '@/types';
-import type { FeatureCollection, LineString, Polygon } from 'geojson';
-import { TOP_BAR_HEIGHT } from '@/constants';
+import { TRANSPORT_COLORS } from '@/types';
+import type { FeatureCollection, LineString, Polygon, Point, Feature } from 'geojson';
+import { TOP_BAR_HEIGHT, getVehicleTiming } from '@/constants';
 
 import { MAP_STYLES } from '@/types';
+
+// Create arrow image for vehicle heading indicator (chevron shape)
+const createArrowImage = (): HTMLCanvasElement => {
+  const size = 64; // Higher resolution for crisp rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  
+  // Clear canvas (transparent)
+  ctx.clearRect(0, 0, size, size);
+  
+  // Draw arrow centered in canvas (for icon-anchor: 'center')
+  ctx.translate(size / 2, size / 2);
+  
+  // Scale up the chevron for the larger canvas
+  const scale = size / 16;
+  
+  // Chevron shape pointing up
+  ctx.beginPath();
+  ctx.moveTo(0 * scale, -5 * scale);     // top tip
+  ctx.lineTo(5 * scale, 3 * scale);      // right outer
+  ctx.lineTo(3 * scale, 3 * scale);      // right inner
+  ctx.lineTo(0 * scale, -1 * scale);     // center notch
+  ctx.lineTo(-3 * scale, 3 * scale);     // left inner
+  ctx.lineTo(-5 * scale, 3 * scale);     // left outer
+  ctx.closePath();
+  
+  // White fill with dark stroke for visibility on any background
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  
+  return canvas;
+};
 
 // Popover height based on screen width (matches Tailwind sm: breakpoint at 640px)
 const getPopoverHeight = (screenWidth: number) => screenWidth < 640 ? 170 : 200;
@@ -62,8 +101,99 @@ const routeLineStyle: LineLayerSpecification = {
   },
 };
 
+// Vehicle ping layer - animated ring for subscribed vehicles (per-vehicle timing)
+const vehiclePingStyle: CircleLayerSpecification = {
+  id: 'vehicle-ping',
+  type: 'circle',
+  source: 'vehicles',
+  filter: ['>', ['get', 'pingOpacity'], 0],
+  paint: {
+    'circle-radius': ['get', 'pingRadius'],
+    'circle-color': 'transparent',
+    'circle-stroke-color': ['get', 'color'],
+    'circle-stroke-width': 2,
+    'circle-stroke-opacity': ['get', 'pingOpacity'],
+  },
+};
+
+// Vehicle circle layer - main dot
+const vehicleCircleStyle: CircleLayerSpecification = {
+  id: 'vehicle-circles',
+  type: 'circle',
+  source: 'vehicles',
+  layout: {
+    'circle-sort-key': ['get', 'sortKey'],
+  },
+  paint: {
+    'circle-radius': ['get', 'circleRadius'],
+    'circle-color': ['get', 'color'],
+    'circle-stroke-color': '#ffffff',
+    'circle-stroke-width': ['case', ['get', 'isSubscribed'], 2.5, 1.5],
+    'circle-opacity': ['get', 'opacity'],
+    'circle-stroke-opacity': ['get', 'opacity'],
+  },
+};
+
+// Vehicle arrow layer - heading indicator (chevron above circle)
+const vehicleArrowStyle: SymbolLayerSpecification = {
+  id: 'vehicle-arrows',
+  type: 'symbol',
+  source: 'vehicles',
+  layout: {
+    'icon-image': 'vehicle-arrow',
+    'icon-size': ['get', 'arrowSize'],
+    'icon-rotate': ['get', 'heading'],
+    'icon-rotation-alignment': 'map',
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+    'icon-anchor': 'center',
+    'icon-offset': [0, -80], // Offset is multiplied by icon-size, so this gives ~25px at zoom 14
+    'symbol-sort-key': ['get', 'sortKey'],
+  },
+  paint: {
+    'icon-opacity': ['get', 'opacity'],
+  },
+};
+
+// Vehicle label layer - route number text
+const vehicleLabelStyle: SymbolLayerSpecification = {
+  id: 'vehicle-labels',
+  type: 'symbol',
+  source: 'vehicles',
+  layout: {
+    'text-field': ['get', 'routeShortName'],
+    'text-size': ['get', 'textSize'],
+    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+    'symbol-sort-key': ['get', 'sortKey'],
+  },
+  paint: {
+    'text-color': '#ffffff',
+    'text-opacity': ['get', 'opacity'],
+    'text-halo-color': 'rgba(0,0,0,0.3)',
+    'text-halo-width': 1,
+  },
+};
+
+interface VehicleFeatureProps {
+  vehicleId: string;
+  routeShortName: string;
+  color: string;
+  opacity: number;
+  heading: number;
+  isSubscribed: boolean;
+  isSelected: boolean;
+  pingRadius: number;
+  pingOpacity: number;
+  circleRadius: number;
+  arrowSize: number;
+  textSize: number;
+  sortKey: number;
+}
+
 // Generate a GeoJSON circle polygon (for flat rendering on 3D tilted maps)
-const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, points = 64): Polygon => {
+const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, points = 32): Polygon => {
   const coords: [number, number][] = [];
   // Earth radius at latitude
   const earthRadius = 6371000;
@@ -83,25 +213,6 @@ const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, poi
   };
 };
 
-// Wrapper component that uses the animated position hook for smooth marker movement
-const AnimatedMarker = memo(({ vehicle, onClick }: { vehicle: TrackedVehicle; onClick: (vehicle: TrackedVehicle) => void }) => {
-  const pos = useAnimatedPosition(vehicle);
-  return (
-    <Marker
-      longitude={pos.lng}
-      latitude={pos.lat}
-      anchor="center"
-      onClick={(e) => {
-        e.originalEvent.stopPropagation();
-        onClick(vehicle);
-      }}
-    >
-      <VehicleMarker vehicle={vehicle} heading={pos.heading} />
-    </Marker>
-  );
-});
-AnimatedMarker.displayName = 'AnimatedMarker';
-
 // Popover wrapper component that tracks animated position.
 // Keyed by vehicleId so hooks reset on vehicle change.
 const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscribe }: {
@@ -116,6 +227,7 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
       longitude={pos.lng}
       latitude={pos.lat}
       anchor="bottom"
+      offset={[0, -25]} // Offset upward to avoid obscuring vehicle marker and heading arrow
       style={{ zIndex: 10 }}
     >
       <VehiclePopover
@@ -146,6 +258,192 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     return vehicles.find((v) => v.vehicleId === selectedVehicleId) || null;
   }, [selectedVehicleId, vehicles]);
 
+  // Pre-compute subscribed route IDs for O(1) lookup
+  const subscribedRouteIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of subscribedRoutes) {
+      ids.add(r.gtfsId);
+      ids.add(r.shortName);
+    }
+    return ids;
+  }, [subscribedRoutes]);
+
+  // Map from route to color for quick lookup
+  const routeColorMap = useMemo(() => {
+    const colorMap: Record<string, string> = {};
+    for (const r of subscribedRoutes) {
+      colorMap[r.gtfsId] = r.color;
+      colorMap[r.shortName] = r.color;
+    }
+    return colorMap;
+  }, [subscribedRoutes]);
+
+  // Vehicle GeoJSON for WebGL layer - updated by rAF loop
+  const [vehicleGeoJson, setVehicleGeoJson] = useState<FeatureCollection<Point, VehicleFeatureProps>>({
+    type: 'FeatureCollection',
+    features: [],
+  });
+
+  // Animate vehicles with a single shared rAF loop
+  const animateVehicles = useSettingsStore((state) => state.animateVehicles);
+  const rafRef = useRef<number>(0);
+  const vehiclesRef = useRef<TrackedVehicle[]>(vehicles);
+  vehiclesRef.current = vehicles;
+
+  // Add arrow image to map
+  const addArrowImage = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    if (!map.hasImage('vehicle-arrow')) {
+      const arrowCanvas = createArrowImage();
+      const ctx = arrowCanvas.getContext('2d')!;
+      const imageData = ctx.getImageData(0, 0, arrowCanvas.width, arrowCanvas.height);
+      map.addImage('vehicle-arrow', imageData, { sdf: false });
+    }
+  }, []);
+
+  // Handle map load - add arrow image
+  const handleMapLoad = useCallback(() => {
+    addArrowImage();
+  }, [addArrowImage]);
+
+  // Re-add arrow image on style changes
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    
+    map.on('style.load', addArrowImage);
+    
+    return () => {
+      map.off('style.load', addArrowImage);
+    };
+  }, [addArrowImage]);
+
+  // Track selected vehicle ID in ref for rAF loop
+  const selectedVehicleIdRef = useRef<string | null | undefined>(selectedVehicleId);
+  selectedVehicleIdRef.current = selectedVehicleId;
+
+  useEffect(() => {
+    const PING_DURATION_MS = 1000; // Duration of ping animation after update (matches typical 1s update rate)
+    
+    const animate = () => {
+      const now = Date.now();
+      
+      const currentVehicles = vehiclesRef.current;
+      const features: Feature<Point, VehicleFeatureProps>[] = [];
+      const currentSelectedId = selectedVehicleIdRef.current;
+
+      // Get current zoom for scaling
+      const zoom = mapRef.current?.getMap()?.getZoom() ?? 14;
+      // Scale factor: 1.0 at zoom 14, smaller when zoomed out, capped when zoomed in
+      const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 14) * 0.3));
+      const baseRadius = 14 * zoomScale;
+      const selectedRadius = 18 * zoomScale;
+      const textSize = Math.max(8, 10 * zoomScale);
+      const arrowSize = 0.25 * zoomScale; // Base size for 64px arrow icon
+
+      for (const vehicle of currentVehicles) {
+        const timing = getVehicleTiming(vehicle.mode);
+        const timeSinceUpdate = now - vehicle.lastPositionUpdate;
+
+        // Calculate staleness
+        const age = now - vehicle.lastUpdate;
+        let staleness = 0;
+        if (age > timing.fadeStartMs) {
+          staleness = Math.min(1, (age - timing.fadeStartMs) / (timing.fadeEndMs - timing.fadeStartMs));
+        }
+        if (staleness >= 1) continue;
+
+        // Calculate exit progress
+        let exitProgress = 0;
+        if (vehicle.exitingAt) {
+          exitProgress = Math.min(1, (now - vehicle.exitingAt) / 300);
+          if (exitProgress >= 1) continue;
+        }
+
+        const opacity = (1 - staleness) * (1 - exitProgress);
+
+        // Determine position (extrapolate if animating)
+        let lat = vehicle.lat;
+        let lng = vehicle.lng;
+
+        if (animateVehicles && timeSinceUpdate <= timing.maxExtrapolateMs && vehicle.speed >= 0.3) {
+          const predicted = extrapolate(
+            vehicle.lat,
+            vehicle.lng,
+            vehicle.heading,
+            vehicle.reportedHeading ?? vehicle.heading,
+            vehicle.speed,
+            vehicle.speedAcceleration ?? vehicle.acceleration ?? 0,
+            timeSinceUpdate / 1000,
+          );
+          lat = predicted.lat;
+          lng = predicted.lng;
+        }
+        
+        // Use raw API heading for arrow direction
+        const heading = vehicle.heading;
+
+        // Determine color
+        const isSubscribed = subscribedRouteIds.has(`HSL:${vehicle.routeId}`) || subscribedRouteIds.has(vehicle.routeShortName);
+        const isSelected = vehicle.vehicleId === currentSelectedId;
+        const color = routeColorMap[`HSL:${vehicle.routeId}`] 
+          ?? routeColorMap[vehicle.routeShortName] 
+          ?? TRANSPORT_COLORS[vehicle.mode] 
+          ?? TRANSPORT_COLORS.bus;
+
+        // Sort key: selected vehicle on top, then by latitude (north = back)
+        // Higher sortKey = drawn later = on top
+        const sortKey = isSelected ? 1000000 : Math.round((90 - lat) * 10000);
+
+        // Per-vehicle ping animation - triggered by lastUpdate, fades over PING_DURATION_MS
+        // Show for all vehicles (subscribed and nearby)
+        let pingRadius = 0;
+        let pingOpacity = 0;
+        const timeSinceLastUpdate = now - vehicle.lastUpdate;
+        if (timeSinceLastUpdate < PING_DURATION_MS) {
+          const pingPhase = timeSinceLastUpdate / PING_DURATION_MS;
+          pingRadius = (baseRadius + pingPhase * baseRadius * 0.8); // expands from baseRadius
+          pingOpacity = 0.6 * (1 - pingPhase); // fade out
+        }
+
+        const circleRadius = isSelected ? selectedRadius : baseRadius;
+
+        features.push({
+          type: 'Feature',
+          properties: {
+            vehicleId: vehicle.vehicleId,
+            routeShortName: vehicle.routeShortName,
+            color,
+            opacity,
+            heading,
+            isSubscribed,
+            isSelected,
+            pingRadius,
+            pingOpacity,
+            circleRadius,
+            arrowSize,
+            textSize,
+            sortKey,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [lng, lat],
+          },
+        });
+      }
+
+      setVehicleGeoJson({ type: 'FeatureCollection', features });
+      rafRef.current = requestAnimationFrame(animate);
+    };
+
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [animateVehicles, subscribedRouteIds, routeColorMap]);
+
+  // Animation state refs - declared here before effects that use them
+  const isAnimatingRef = useRef(false);
+  const isProgrammaticMoveRef = useRef(false);
 
   // Handle pending flyTo animations with padding for bottom sheet
   useEffect(() => {
@@ -183,54 +481,65 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   }, [pendingFlyTo, consumePendingFlyTo, bottomPadding, selectedVehicle]);
 
 
-
-  // Keep selected vehicle centered on an interval
-  const isAnimatingRef = useRef(false);
-  const lastCenterTimeRef = useRef(0);
-
   const MAX_TRACKING_ZOOM = 16.5;
 
+  // Store selected vehicle in ref for interval access
+  const selectedVehicleRef = useRef<TrackedVehicle | null>(selectedVehicle);
+  selectedVehicleRef.current = selectedVehicle;
+
   useEffect(() => {
-    if (!selectedVehicle || !mapRef.current) return;
-    if (isAnimatingRef.current) return;
+    if (!selectedVehicleId) return;
 
-    const now = Date.now();
-    if (now - lastCenterTimeRef.current < 1000) return;
+    // Interval to keep vehicle centered - runs every second
+    const intervalId = setInterval(() => {
+      const vehicle = selectedVehicleRef.current;
+      if (!vehicle || !mapRef.current) {
+        return;
+      }
 
-    const map = mapRef.current.getMap();
-    if (!map || !map.loaded()) return;
+      const map = mapRef.current.getMap();
+      if (!map) {
+        return;
+      }
 
-    lastCenterTimeRef.current = now;
+      const now = Date.now();
+      const duration = 1000;
 
-    const duration = 1000;
+      // Predict where the vehicle will be when the animation ends
+      let center: [number, number] = [vehicle.lng, vehicle.lat];
+      if (vehicle.speed > 0.3) {
+        const predicted = extrapolate(
+          vehicle.lat,
+          vehicle.lng,
+          vehicle.heading,
+          vehicle.reportedHeading ?? vehicle.heading,
+          vehicle.speed,
+          vehicle.speedAcceleration ?? vehicle.acceleration ?? 0,
+          (now - vehicle.lastPositionUpdate + duration) / 1000,
+        );
+        center = [predicted.lng, predicted.lat];
+      }
 
-    // Predict where the vehicle will be when the animation ends
-    let center: [number, number] = [selectedVehicle.lng, selectedVehicle.lat];
-    if (selectedVehicle.speed > 0.3) {
-      const predicted = extrapolate(
-        selectedVehicle.lat,
-        selectedVehicle.lng,
-        selectedVehicle.heading,
-        selectedVehicle.reportedHeading ?? selectedVehicle.heading,
-        selectedVehicle.speed,
-        selectedVehicle.speedAcceleration ?? selectedVehicle.acceleration ?? 0,
-        (now - selectedVehicle.lastPositionUpdate + duration) / 1000,
-      );
-      center = [predicted.lng, predicted.lat];
-    }
+      // Mark as programmatic movement to prevent deselection
+      isProgrammaticMoveRef.current = true;
+      map.easeTo({
+        center,
+        zoom: Math.min(map.getZoom(), MAX_TRACKING_ZOOM),
+        padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
+        duration,
+      });
+      // Reset after animation completes
+      setTimeout(() => { isProgrammaticMoveRef.current = false; }, duration);
+    }, 1000);
 
-    map.easeTo({
-      center,
-      zoom: Math.min(map.getZoom(), MAX_TRACKING_ZOOM),
-      padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
-      duration,
-    });
-  }, [selectedVehicle?.lng, selectedVehicle?.lat, bottomPadding]);
+    return () => clearInterval(intervalId);
+  }, [selectedVehicleId, bottomPadding]);
 
   // Auto-deselect vehicle on user-initiated pan/zoom
   const handleMoveStart = useCallback(
     (evt: ViewStateChangeEvent) => {
-      if (selectedVehicleId && evt.originalEvent) {
+      // Only deselect on user-initiated moves (has originalEvent) and not during programmatic tracking
+      if (selectedVehicleId && evt.originalEvent && !isProgrammaticMoveRef.current) {
         onVehicleSelect?.(null);
       }
     },
@@ -252,6 +561,23 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       onVehicleClick?.(vehicle);
     },
     [selectedVehicleId, onVehicleSelect, onVehicleClick]
+  );
+
+  // Handle click on vehicle WebGL layer
+  const handleVehicleLayerClick = useCallback(
+    (evt: MapLayerMouseEvent) => {
+      if (!evt.features || evt.features.length === 0) return;
+      const feature = evt.features[0];
+      const vehicleId = feature.properties?.vehicleId;
+      if (!vehicleId) return;
+
+      const vehicle = vehiclesRef.current.find((v) => v.vehicleId === vehicleId);
+      if (vehicle) {
+        evt.originalEvent.stopPropagation();
+        handleVehicleClick(vehicle);
+      }
+    },
+    [handleVehicleClick]
   );
 
   const handlePopoverSubscribe = useCallback(() => {
@@ -285,7 +611,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     const bounds = computeRouteBounds(routePatterns);
     if (!bounds) return null;
 
-    const [[minLng, _minLat], [maxLng, maxLat]] = bounds;
+    const [[minLng], [maxLng, maxLat]] = bounds;
     return {
       lng: (minLng + maxLng) / 2,
       lat: maxLat,
@@ -469,9 +795,19 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     <Map
       ref={mapRef}
       initialViewState={initialViewState}
+      onLoad={handleMapLoad}
       onMoveStart={handleMoveStart}
       onMoveEnd={handleMove}
-      onClick={handleMapClick}
+      onClick={(e) => {
+        // Check if clicked on a vehicle
+        if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'vehicle-circles') {
+          handleVehicleLayerClick(e);
+        } else {
+          handleMapClick();
+        }
+      }}
+      interactiveLayerIds={['vehicle-circles']}
+      cursor="pointer"
       mapStyle={mapStyleUrl}
       style={{ width: '100%', height: '100%' }}
       attributionControl={false}
@@ -542,13 +878,13 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       )}
 
       {/* Vehicle markers */}
-      {vehicles.map((vehicle) => (
-        <AnimatedMarker
-          key={vehicle.vehicleId}
-          vehicle={vehicle}
-          onClick={handleVehicleClick}
-        />
-      ))}
+      {/* WebGL layers for all vehicles (including selected) */}
+      <Source id="vehicles" type="geojson" data={vehicleGeoJson}>
+        <Layer {...vehiclePingStyle} />
+        <Layer {...vehicleCircleStyle} />
+        <Layer {...vehicleArrowStyle} />
+        <Layer {...vehicleLabelStyle} />
+      </Source>
 
       {/* Popovers rendered after vehicle markers for higher z-index */}
       {/* Vehicle popover - follows selected vehicle */}

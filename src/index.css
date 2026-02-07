@@ -81,12 +81,6 @@ body {
   color: #aaa;
 }
 
-/* Vehicle marker animation */
-.vehicle-marker {
-  transition: transform 1s linear;
-  will-change: transform;
-}
-
 /* Bottom sheet handle indicator */
 .sheet-handle {
   width: 36px;

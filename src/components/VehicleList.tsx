@@ -1,5 +1,4 @@
-import { memo, useMemo, useCallback, forwardRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { memo, useMemo, useCallback } from 'react';
 import type { TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useVehicleStore, useSubscriptionStore, useLocationStore } from '@/stores';
@@ -9,7 +8,6 @@ import {
   KM_IN_METERS,
   DELAY_LATE_THRESHOLD,
   DELAY_EARLY_THRESHOLD,
-  CARD_ENTER_TRANSITION,
   VEHICLE_FLY_TO_ZOOM,
 } from '@/constants';
 
@@ -67,32 +65,25 @@ const calculateDistance = (
 };
 
 const VehicleCard = memo(
-  forwardRef<HTMLDivElement, VehicleCardProps>(
-    ({ vehicle, distance, isSubscribed, isSelected, onCardClick, onSubscriptionToggle }, ref) => {
-      const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
-      const subscribed = subscribedRoutes.find(
-        (r) => r.gtfsId === `HSL:${vehicle.routeId}` || r.shortName === vehicle.routeShortName
-      );
-      const color = subscribed?.color || TRANSPORT_COLORS[vehicle.mode] || TRANSPORT_COLORS.bus;
+  ({ vehicle, distance, isSubscribed, isSelected, onCardClick, onSubscriptionToggle }: VehicleCardProps) => {
+    const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
+    const subscribed = subscribedRoutes.find(
+      (r) => r.gtfsId === `HSL:${vehicle.routeId}` || r.shortName === vehicle.routeShortName
+    );
+    const color = subscribed?.color || TRANSPORT_COLORS[vehicle.mode] || TRANSPORT_COLORS.bus;
 
-      const delayClass =
-        vehicle.delay > DELAY_LATE_THRESHOLD
-          ? 'text-red-500'
-          : vehicle.delay < DELAY_EARLY_THRESHOLD
-            ? 'text-green-500'
-            : 'text-gray-500 dark:text-gray-400';
+    const delayClass =
+      vehicle.delay > DELAY_LATE_THRESHOLD
+        ? 'text-red-500'
+        : vehicle.delay < DELAY_EARLY_THRESHOLD
+          ? 'text-green-500'
+          : 'text-gray-500 dark:text-gray-400';
 
-      return (
-        <motion.div
-          ref={ref}
-          layout
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, x: -100 }}
-          transition={CARD_ENTER_TRANSITION}
-          className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
-          onClick={onCardClick}
-        >
+    return (
+      <div
+        className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-150 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
+        onClick={onCardClick}
+      >
         <div className="flex items-center gap-2 min-[425px]:gap-3">
           {/* Route badge */}
           <div
@@ -158,10 +149,9 @@ const VehicleCard = memo(
             )}
           </button>
         </div>
-      </motion.div>
+      </div>
     );
   }
-  )
 );
 
 VehicleCard.displayName = 'VehicleCard';
@@ -173,6 +163,16 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
   const userLocation = useLocationStore((state) => state.userLocation);
   const flyToLocation = useLocationStore((state) => state.flyToLocation);
 
+  // Pre-compute subscribed route IDs for O(1) lookup
+  const subscribedRouteIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of subscribedRoutes) {
+      ids.add(r.gtfsId);
+      ids.add(r.shortName);
+    }
+    return ids;
+  }, [subscribedRoutes]);
+
   // Calculate distances and sort vehicles
   const sortedVehicles = useMemo(() => {
     const withDistance = vehicles.map((v) => ({
@@ -180,9 +180,7 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
       distance: userLocation
         ? calculateDistance(userLocation.latitude, userLocation.longitude, v.lat, v.lng)
         : undefined,
-      isSubscribed: subscribedRoutes.some(
-        (r) => r.gtfsId === `HSL:${v.routeId}` || r.shortName === v.routeShortName
-      ),
+      isSubscribed: subscribedRouteIds.has(`HSL:${v.routeId}`) || subscribedRouteIds.has(v.routeShortName),
     }));
 
     // Show subscribed vehicles first, then sort by distance
@@ -195,7 +193,7 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
       }
       return 0;
     });
-  }, [vehicles, subscribedRoutes, userLocation]);
+  }, [vehicles, subscribedRouteIds, userLocation]);
 
   const handleCardClick = useCallback(
     (vehicle: TrackedVehicle) => {
@@ -238,20 +236,18 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
   }
 
   return (
-    <div className="space-y-2 px-0.5 py-0.5">
-      <AnimatePresence mode="popLayout" initial={false}>
-        {sortedVehicles.map(({ vehicle, distance, isSubscribed }) => (
-          <VehicleCard
-            key={vehicle.vehicleId}
-            vehicle={vehicle}
-            distance={distance}
-            isSubscribed={isSubscribed}
-            isSelected={selectedVehicleId === vehicle.vehicleId}
-            onCardClick={() => handleCardClick(vehicle)}
-            onSubscriptionToggle={() => handleSubscriptionToggle(vehicle, isSubscribed)}
-          />
-        ))}
-      </AnimatePresence>
+    <div className="space-y-2 px-0.5">
+      {sortedVehicles.map(({ vehicle, distance, isSubscribed }) => (
+        <VehicleCard
+          key={vehicle.vehicleId}
+          vehicle={vehicle}
+          distance={distance}
+          isSubscribed={isSubscribed}
+          isSelected={selectedVehicleId === vehicle.vehicleId}
+          onCardClick={() => handleCardClick(vehicle)}
+          onSubscriptionToggle={() => handleSubscriptionToggle(vehicle, isSubscribed)}
+        />
+      ))}
     </div>
   );
 };

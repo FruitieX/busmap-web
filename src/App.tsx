@@ -25,7 +25,6 @@ import {
   SHEET_MAX_HEIGHT,
   SHEET_DEFAULT_HEIGHT,
   SHEET_EXPAND_THRESHOLD,
-  CARD_ENTER_TRANSITION,
   FAB_TOP_OFFSET,
 } from '@/constants';
 
@@ -195,10 +194,11 @@ const App = () => {
     mqttService.subscribeToNearbyArea(bounds);
   }, [showNearby, userCoords, debouncedRadius, markNearbyVehiclesForExit, clearNearbyVehicles]);
 
-  // Handle route selection
+  // Handle route selection - uses getState() to avoid dependency on subscribedRoutes
   const handleSelectRoute = useCallback(
     (route: Route) => {
-      const isSubscribed = subscribedRoutes.some((r) => r.gtfsId === route.gtfsId);
+      const currentRoutes = useSubscriptionStore.getState().subscribedRoutes;
+      const isSubscribed = currentRoutes.some((r) => r.gtfsId === route.gtfsId);
       if (isSubscribed) {
         unsubscribeFromRoute(route.gtfsId);
         mqttService.unsubscribeFromRoute(route.gtfsId);
@@ -207,7 +207,7 @@ const App = () => {
         mqttService.subscribeToRoute(route.gtfsId);
       }
     },
-    [subscribedRoutes, subscribeToRoute, unsubscribeFromRoute]
+    [subscribeToRoute, unsubscribeFromRoute]
   );
 
   // Handle subscribe from vehicle card or popover
@@ -438,11 +438,10 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
           return (
             <motion.div
               key={route.gtfsId}
-              layout
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, x: -100 }}
-              transition={CARD_ENTER_TRANSITION}
+              transition={{ opacity: { duration: 0.15 }, scale: { duration: 0.15 } }}
               className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-2 min-[425px]:gap-3 cursor-pointer transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
               onClick={() => onRouteClick?.(route)}
             >

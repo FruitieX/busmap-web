@@ -42,6 +42,10 @@ class MqttService {
   private maxReconnectAttempts = 10;
   private currentNearbyTopics: string[] = [];
 
+  private vehicleBuffer: TrackedVehicle[] = [];
+  private flushScheduled = false;
+  private readonly BATCH_INTERVAL_MS = 100;
+
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.client?.connected) {
@@ -237,6 +241,21 @@ class MqttService {
     this.nearbyRadius = radius;
   }
 
+  private scheduleFlush() {
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    setTimeout(() => this.flushVehicleBuffer(), this.BATCH_INTERVAL_MS);
+  }
+
+  private flushVehicleBuffer() {
+    this.flushScheduled = false;
+    if (this.vehicleBuffer.length === 0) return;
+
+    const batch = this.vehicleBuffer;
+    this.vehicleBuffer = [];
+    useVehicleStore.getState().updateVehicles(batch);
+  }
+
   // Haversine formula for distance calculation
   private getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371000; // Earth's radius in meters
@@ -300,8 +319,6 @@ class MqttService {
         }
       }
 
-      useVehicleStore.getState().incrementMessageCount();
-
       const vehicle: TrackedVehicle = {
         vehicleId,
         operatorId: vp.oper,
@@ -329,8 +346,9 @@ class MqttService {
         lastPositionUpdate: Date.now(),
       };
 
-      useVehicleStore.getState().updateVehicle(vehicle);
-    } catch (error) {
+      this.vehicleBuffer.push(vehicle);
+      this.scheduleFlush();
+    } catch {
       // Silently ignore parse errors - some messages may be malformed
     }
   }
