@@ -7,3 +7,4 @@ export { BottomSheet } from './BottomSheet';
 export { StatusBar } from './StatusBar';
 export { FloatingActionButton } from './FloatingActionButton';
 export { SettingsPanel } from './SettingsPanel';
+export { UpdateToast } from './UpdateToast';

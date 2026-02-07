@@ -7,6 +7,7 @@ import {
   StatusBar,
   FloatingActionButton,
   SettingsPanel,
+  UpdateToast,
 } from '@/components';
 import {
   useSettingsStore,
@@ -366,6 +367,9 @@ const App = () => {
 
       {/* Settings panel */}
       <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+      {/* Update toast */}
+      <UpdateToast />
     </div>
   );
 };
