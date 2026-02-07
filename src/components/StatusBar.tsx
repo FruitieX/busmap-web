@@ -35,6 +35,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const historyPushedRef = useRef(false);
+  const keyboardNavRef = useRef(false);
   const { data: routes } = useRoutes();
 
   const closeSearch = useCallback(() => {
@@ -161,9 +162,11 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
+        keyboardNavRef.current = true;
         setSelectedIndex((prev) => Math.min(prev + 1, searchResults.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        keyboardNavRef.current = true;
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter' && searchResults.length > 0) {
         e.preventDefault();
@@ -178,7 +181,8 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
 
   // Scroll selected item into view
   useEffect(() => {
-    if (!resultsRef.current) return;
+    if (!resultsRef.current || !keyboardNavRef.current) return;
+    keyboardNavRef.current = false;
     const selectedElement = resultsRef.current.children[selectedIndex] as HTMLElement;
     selectedElement?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
@@ -339,7 +343,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                 </div>
 
                 {/* Results */}
-                <div ref={resultsRef} className="max-h-[280px] overflow-y-auto scrollbar-thin">
+                <div ref={resultsRef} className="max-h-[280px] overflow-y-auto overflow-x-hidden scrollbar-thin">
                 {searchResults.length > 0 ? (
                   searchResults.map((route, index) => {
                     const subscribed = isSubscribed(route);
@@ -362,8 +366,11 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                         >
                           {route.shortName}
                         </div>
-                        <div className="flex-1 text-left">
-                          <div className="text-sm text-gray-900 dark:text-white truncate">
+                        <div className="flex-1 text-left min-w-0 h-8 flex items-center">
+                          <div
+                            className="text-sm text-gray-900 dark:text-white line-clamp-2 leading-4"
+                            title={route.longName}
+                          >
                             {route.longName}
                           </div>
                         </div>

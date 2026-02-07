@@ -67,7 +67,7 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
       </div>
 
       {/* Header */}
-      <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+      <div className="flex items-start gap-2 sm:gap-3 mb-1.5 sm:mb-2">
         <div
           className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0"
           style={{ backgroundColor: color }}
@@ -75,7 +75,9 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
           {route.shortName}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm sm:text-base text-gray-900 dark:text-white truncate">
+          <div className="font-medium text-sm sm:text-base text-gray-900 dark:text-white line-clamp-2 leading-4 sm:leading-5"
+            title={route.longName || `Route ${route.shortName}`}
+          >
             {route.longName || `Route ${route.shortName}`}
           </div>
           <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 capitalize">
