@@ -146,12 +146,14 @@ export const fetchRoutesByIds = async (routeIds: string[]): Promise<Route[]> => 
 
   const data = await graphqlFetch<RoutesResponse>(query);
 
-  return data.routes.map((route) => ({
-    gtfsId: route.gtfsId,
-    shortName: route.shortName,
-    longName: route.longName,
-    mode: normalizeMode(route.mode, route.gtfsId),
-  }));
+  return data.routes
+    .filter((route) => route != null)
+    .map((route) => ({
+      gtfsId: route.gtfsId,
+      shortName: route.shortName,
+      longName: route.longName,
+      mode: normalizeMode(route.mode, route.gtfsId),
+    }));
 };
 
 export const fetchRoutePatterns = async (routeIds: string[]): Promise<Map<string, RoutePattern[]>> => {

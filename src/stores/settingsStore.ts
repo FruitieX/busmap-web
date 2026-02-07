@@ -45,6 +45,12 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'busmap-settings',
       version: 5,
+      migrate: (persisted, version) => {
+        console.log(`[busmap] Migrating settings from version ${version} to 5`, persisted);
+        const migrated = { ...defaultSettings, ...(persisted as object) };
+        console.log('[busmap] Migrated settings:', migrated);
+        return migrated;
+      },
     }
   )
 );

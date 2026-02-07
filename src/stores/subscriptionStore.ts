@@ -19,13 +19,22 @@ const migrateLegacySubscriptions = async (): Promise<SubscribedRoute[] | null> =
 
   try {
     const activeRouteIds: string[] = JSON.parse(raw);
+    console.log('[busmap] Found legacy activeRoutes:', activeRouteIds);
+
     if (!Array.isArray(activeRouteIds) || activeRouteIds.length === 0) {
+      console.log('[busmap] Legacy activeRoutes empty, removing keys');
       removeLegacyKeys();
       return null;
     }
 
     const validIds = activeRouteIds.filter((id) => typeof id === 'string');
+    console.log(`[busmap] Fetching ${validIds.length} routes from API...`);
     const routes = await fetchRoutesByIds(validIds);
+
+    const discarded = validIds.filter((id) => !routes.some((r) => r.gtfsId === id));
+    if (discarded.length > 0) {
+      console.warn('[busmap] Discarding routes no longer found in API:', discarded);
+    }
 
     const migrated: SubscribedRoute[] = routes.map((route, index) => ({
       gtfsId: route.gtfsId,
@@ -36,10 +45,11 @@ const migrateLegacySubscriptions = async (): Promise<SubscribedRoute[] | null> =
       subscribedAt: Date.now(),
     }));
 
+    console.log('[busmap] Successfully migrated legacy subscriptions:', migrated.map((r) => `${r.shortName} (${r.gtfsId})`));
     removeLegacyKeys();
     return migrated;
-  } catch {
-    // Don't remove legacy keys on network failure — retry next launch
+  } catch (error) {
+    console.warn('[busmap] Legacy migration failed (will retry next launch):', error);
     return null;
   }
 };
@@ -131,13 +141,23 @@ export const useSubscriptionStore = create<SubscriptionState>()(
     {
       name: 'busmap-subscriptions',
       version: 1,
+      migrate: (persisted, version) => {
+        console.log(`[busmap] Migrating subscriptions from version ${version} to 1`, persisted);
+        return { subscribedRoutes: [], nearbyBounds: null, ...(persisted as object) };
+      },
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        if (state.subscribedRoutes.length > 0) return;
+        if (state.subscribedRoutes.length > 0) {
+          console.log(`[busmap] Rehydrated ${state.subscribedRoutes.length} subscriptions from storage`);
+          return;
+        }
 
+        console.log('[busmap] No subscriptions in store, checking for legacy format...');
         migrateLegacySubscriptions().then((migrated) => {
           if (migrated && migrated.length > 0) {
             useSubscriptionStore.setState({ subscribedRoutes: migrated });
+          } else {
+            console.log('[busmap] No legacy subscriptions found');
           }
         });
       },
