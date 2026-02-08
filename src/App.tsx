@@ -10,7 +10,7 @@ import {
   FloatingActionButton,
   SettingsPanel,
   UpdateToast,
-  ConfirmDeleteButton,
+  StarToggleButton,
 } from '@/components';
 import {
   useSettingsStore,
@@ -28,7 +28,6 @@ import {
   SHEET_MIN_HEIGHT,
   SHEET_MAX_HEIGHT,
   SHEET_EXPAND_THRESHOLD,
-  FAB_TOP_OFFSET,
   VEHICLE_FLY_TO_ZOOM,
 } from '@/constants';
 
@@ -88,7 +87,11 @@ const App = () => {
   const sheetPersistTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const [nearbyMenuOpen, setNearbyMenuOpen] = useState(false);
   const nearbyMenuRef = useRef<HTMLDivElement>(null);
+  const nearbyBtnRef = useRef<HTMLButtonElement>(null);
+  const [nearbyMenuRect, setNearbyMenuRect] = useState<{ top: number; right: number; above: boolean } | null>(null);
   const expandSheetRef = useRef<(() => void) | null>(null);
+  const sheetContentRef = useRef<HTMLDivElement>(null);
+  const stopListScrollRef = useRef(0);
 
   // Motion-value-driven button position (no React re-render lag)
   const fallbackHeight = useMotionValue(sheetHeight);
@@ -134,6 +137,9 @@ const App = () => {
 
   // Stops store
   const { selectedStop, selectedStopRouteIds, selectStop, clearSelectedStop } = useStopStore();
+
+  // Track the stop the user came from when activating a route from StopPopover
+  const previousStopRef = useRef<Stop | null>(null);
 
   // Temporary MQTT subscriptions for activated (not permanently subscribed) routes
   const tempMqttRouteIds = useRef(new Set<string>());
@@ -237,32 +243,32 @@ const App = () => {
       return;
     }
 
-    if (!userCoords) {
+    if (!stableCoords) {
       // Request location if we don't have it
-      requestUserLocation().catch(console.error);
+      if (!userCoords) requestUserLocation().catch(console.error);
       return;
     }
 
     // Mark vehicles outside new radius for exit animation
-    markNearbyVehiclesForExit(userCoords, debouncedRadius);
+    markNearbyVehiclesForExit(stableCoords, debouncedRadius);
 
-    // Calculate bounding box from user location and debouncedRadius
+    // Calculate bounding box from stable location and debouncedRadius
     // 1 degree of latitude ≈ 111km, 1 degree of longitude ≈ 65km at 60°N
     const latDelta = debouncedRadius / 111000;
     const lonDelta = debouncedRadius / 65000; // Adjusted for Helsinki's latitude
 
     const bounds: BoundingBox = {
-      north: userCoords.lat + latDelta,
-      south: userCoords.lat - latDelta,
-      east: userCoords.lng + lonDelta,
-      west: userCoords.lng - lonDelta,
+      north: stableCoords.lat + latDelta,
+      south: stableCoords.lat - latDelta,
+      east: stableCoords.lng + lonDelta,
+      west: stableCoords.lng - lonDelta,
     };
 
-    console.log(`Nearby mode: subscribing to ${debouncedRadius}m radius around`, userCoords);
+    console.log(`Nearby mode: subscribing to ${debouncedRadius}m radius around`, stableCoords);
     // Use atomic configureNearby to handle connection timing - if MQTT isn't
     // connected yet, it will store the config and apply it when connected
-    mqttService.configureNearby(bounds, userCoords, debouncedRadius);
-  }, [showNearby, userCoords, debouncedRadius, markNearbyVehiclesForExit, clearNearbyVehicles]);
+    mqttService.configureNearby(bounds, stableCoords, debouncedRadius);
+  }, [showNearby, stableCoords, debouncedRadius, markNearbyVehiclesForExit, clearNearbyVehicles]);
 
   // Handle route selection - uses getState() to avoid dependency on subscribedRoutes
   const handleSelectRoute = useCallback(
@@ -284,6 +290,10 @@ const App = () => {
   // Handle route activation (select without subscribing) - for nearby routes and search
   const handleActivateRoute = useCallback(
     (route: Route) => {
+      // Save the current stop so we can navigate back from route popover
+      const currentStop = useStopStore.getState().selectedStop;
+      previousStopRef.current = currentStop;
+
       setSelectedVehicleId(null);
       clearSelectedStop();
       cleanupTempSubscriptions();
@@ -309,6 +319,7 @@ const App = () => {
     if (!routeId) {
       setActivatedRoute(null);
       cleanupTempSubscriptions();
+      previousStopRef.current = null;
     }
   }, [cleanupTempSubscriptions]);
 
@@ -365,6 +376,11 @@ const App = () => {
   // Handle stop click from list or map
   const handleStopClick = useCallback(
     (stop: Stop) => {
+      // Save scroll position before switching to StopDetails
+      if (sheetContentRef.current) {
+        stopListScrollRef.current = sheetContentRef.current.scrollTop;
+      }
+
       // Clear other selections
       setSelectedVehicleId(null);
       clearRouteSelection(null);
@@ -375,8 +391,11 @@ const App = () => {
         clearSelectedStop();
       } else {
         selectStop(stop);
-        // Switch to stops tab and fly to the stop
+        // Switch to stops tab, scroll to top, and fly to the stop
         switchTab('stops');
+        if (sheetContentRef.current) {
+          sheetContentRef.current.scrollTop = 0;
+        }
         const { flyToLocation } = useLocationStore.getState();
         flyToLocation(stop.lat, stop.lon, 14);
 
@@ -394,11 +413,34 @@ const App = () => {
     [selectedStop, selectStop, clearSelectedStop, switchTab, cleanupTempSubscriptions],
   );
 
+  // Navigate back to the stop the user came from when they activated a route from StopPopover
+  const handleBackToStop = useCallback(() => {
+    const stop = previousStopRef.current;
+    if (!stop) return;
+    previousStopRef.current = null;
+    handleStopClick(stop);
+  }, [handleStopClick]);
+
   // Handle back from stop details
   const handleStopBack = useCallback(() => {
     cleanupTempSubscriptions();
     clearSelectedStop();
+    // Restore scroll position after NearbyStops re-mounts
+    requestAnimationFrame(() => {
+      if (sheetContentRef.current) {
+        sheetContentRef.current.scrollTop = stopListScrollRef.current;
+      }
+    });
   }, [clearSelectedStop, cleanupTempSubscriptions]);
+
+  // Handle deselecting a vehicle while a stop remains selected
+  const handleVehicleDeselect = useCallback(() => {
+    setSelectedVehicleId(null);
+    if (selectedStop) {
+      const { flyToLocation } = useLocationStore.getState();
+      flyToLocation(selectedStop.lat, selectedStop.lon, 14);
+    }
+  }, [selectedStop]);
 
   // Handle clicking a timetable departure to find and select matching vehicle
   const handleDepartureClick = useCallback(
@@ -408,7 +450,6 @@ const App = () => {
       const mqttDir = (departure.directionId + 1) as 1 | 2;
 
       let bestMatch: TrackedVehicle | null = null;
-      let bestDistance = Infinity;
 
       for (const vehicle of vehicles.values()) {
         if (vehicle.routeId !== routeId || vehicle.direction !== mqttDir) continue;
@@ -418,41 +459,55 @@ const App = () => {
           bestMatch = vehicle;
           break;
         }
-
-        // Fallback: closest vehicle to the stop (if startTime doesn't match exactly)
-        if (selectedStop) {
-          const dist = Math.abs(vehicle.lat - selectedStop.lat) + Math.abs(vehicle.lng - selectedStop.lon);
-          if (dist < bestDistance) {
-            bestDistance = dist;
-            bestMatch = vehicle;
-          }
-        }
       }
 
       if (bestMatch) {
         setSelectedVehicleId(bestMatch.vehicleId);
-        clearRouteSelection(null);
-        // Keep the stop active - don't clear it
+        // Only clear route UI state — don't cleanup temp subscriptions since the stop is still active
+        setSelectedRouteId(null);
+        setActivatedRoute(null);
         const { flyToLocation } = useLocationStore.getState();
         flyToLocation(bestMatch.lat, bestMatch.lng, VEHICLE_FLY_TO_ZOOM);
+      } else {
+        // Vehicle not yet tracking — deselect any selected vehicle and recenter stop
+        handleVehicleDeselect();
       }
     },
-    [selectedStop],
+    [handleVehicleDeselect],
   );
 
   // Per-tab nearby toggle value and handler
   const anyNearbyActive = showNearby || showNearbyRoutes || showStops;
 
-  // Close nearby menu when clicking outside
+  // Close nearby menu when clicking outside, and keep position up-to-date while open
   useEffect(() => {
     if (!nearbyMenuOpen) return;
+
+    let rafId: number;
+    const updateRect = () => {
+      if (!nearbyBtnRef.current) return;
+      const rect = nearbyBtnRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const above = spaceBelow < 160;
+      setNearbyMenuRect({
+        top: above ? rect.top : rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+        above,
+      });
+      rafId = requestAnimationFrame(updateRect);
+    };
+    rafId = requestAnimationFrame(updateRect);
+
     const handleClickOutside = (e: MouseEvent) => {
       if (nearbyMenuRef.current && !nearbyMenuRef.current.contains(e.target as Node)) {
         setNearbyMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      cancelAnimationFrame(rafId);
+    };
   }, [nearbyMenuOpen]);
 
   // Nearby routes: routes from nearby stops that aren't already subscribed
@@ -535,26 +590,25 @@ const App = () => {
         nearbyStops={nearbyStops}
         onStopClick={handleStopClick}
         onStopDeselect={handleStopBack}
+        onVehicleDeselect={handleVehicleDeselect}
+        onRouteActivate={handleActivateRoute}
+        onBackToStop={previousStopRef.current ? handleBackToStop : undefined}
         nearbyRouteIds={nearbyRouteIds}
       />
 
       {/* Status bar with search */}
       <StatusBar onActivateRoute={handleActivateRoute} onToggleRouteSubscription={handleSelectRoute} nearbyStops={nearbyStops} onStopClick={handleStopClick} />
 
-      {/* Settings button - top right */}
-      <div className="fixed right-4 z-30" style={{ top: FAB_TOP_OFFSET }}>
+      {/* FABs - bottom right, move with bottom sheet */}
+      <motion.div
+        className="fixed right-4 z-30 flex flex-col gap-2"
+        style={{ bottom: fabBottom }}
+      >
         <FloatingActionButton
           icon={<SettingsIcon />}
           onClick={() => setIsSettingsOpen(true)}
           label="Settings"
         />
-      </div>
-
-      {/* Locate me button - bottom right, moves with bottom sheet */}
-      <motion.div
-        className="fixed right-4 z-30"
-        style={{ bottom: fabBottom }}
-      >
         <FloatingActionButton
           icon={<LocationIcon />}
           onClick={handleLocateMe}
@@ -575,6 +629,7 @@ const App = () => {
           sheetPersistTimeoutRef.current = setTimeout(() => setPersistedSheetHeight(h), 300);
         }}
         onExpand={(expand) => { expandSheetRef.current = expand; }}
+        contentRef={sheetContentRef}
         header={
           <div className="flex items-center gap-2 mb-3 pt-1">
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-none flex-1 min-w-0">
@@ -617,15 +672,20 @@ const App = () => {
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 onClick={() => setNearbyMenuOpen(!nearbyMenuOpen)}
+                ref={nearbyBtnRef}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
                 Nearby
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={nearbyMenuOpen ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                </svg>
               </button>
-              {nearbyMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+              {nearbyMenuOpen && nearbyMenuRect && (
+                <div
+                  className="fixed w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+                  style={nearbyMenuRect.above
+                    ? { bottom: window.innerHeight - nearbyMenuRect.top + 4, right: nearbyMenuRect.right }
+                    : { top: nearbyMenuRect.top, right: nearbyMenuRect.right }
+                  }>
                   <label className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
                     <span className="text-sm text-gray-700 dark:text-gray-200">Vehicles</span>
                     <input type="checkbox" checked={showNearby} onChange={(e) => setShowNearby(e.target.checked)} className="w-4 h-4 accent-primary-500" />
@@ -701,18 +761,11 @@ const App = () => {
                               {route.mode}
                             </div>
                           </div>
-                          <button
-                            className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSubscribeRoute(route);
-                            }}
-                            title="Track this route"
-                          >
-                            <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                          </button>
+                          <StarToggleButton
+                            active={subscribedRoutes.some((r) => r.gtfsId === route.gtfsId)}
+                            onToggle={() => handleSelectRoute(route)}
+                            title={subscribedRoutes.some((r) => r.gtfsId === route.gtfsId) ? 'Remove route' : 'Track this route'}
+                          />
                         </div>
                       );
                     })}
@@ -725,6 +778,7 @@ const App = () => {
               stop={selectedStop}
               onBack={handleStopBack}
               onDepartureClick={handleDepartureClick}
+              onVehicleDeselect={handleVehicleDeselect}
             />
           ) : (
             <NearbyStops
@@ -809,8 +863,9 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
                   {route.mode} {vehicleCount > 0 && `• ${vehicleCount} direction${vehicleCount > 1 ? 's' : ''}`}
                 </div>
               </div>
-              <ConfirmDeleteButton
-                onConfirm={() => onUnsubscribe(route.gtfsId)}
+              <StarToggleButton
+                active={true}
+                onToggle={() => onUnsubscribe(route.gtfsId)}
                 title="Remove route"
               />
             </motion.div>

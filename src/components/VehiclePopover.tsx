@@ -90,7 +90,7 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe 
           </div>
         </div>
         <button
-          onClick={onClose}
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
           className="shrink-0 w-6 h-6 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center"
         >
           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

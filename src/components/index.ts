@@ -12,4 +12,4 @@ export { StatusBar } from './StatusBar';
 export { FloatingActionButton } from './FloatingActionButton';
 export { SettingsPanel } from './SettingsPanel';
 export { UpdateToast } from './UpdateToast';
-export { ConfirmDeleteButton } from './ConfirmDeleteButton';
+export { StarToggleButton } from './StarToggleButton';

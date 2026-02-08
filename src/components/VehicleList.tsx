@@ -2,7 +2,7 @@ import { memo, useMemo, useCallback } from 'react';
 import type { TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useVehicleStore, useSubscriptionStore, useLocationStore } from '@/stores';
-import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { StarToggleButton } from './StarToggleButton';
 import {
   EARTH_RADIUS_M,
   MPS_TO_KMPH,
@@ -118,25 +118,11 @@ const VehicleCard = memo(
           </div>
 
           {/* Subscribe/unsubscribe button */}
-          {isSubscribed ? (
-            <ConfirmDeleteButton
-              onConfirm={onSubscriptionToggle}
-              title="Stop tracking"
-            />
-          ) : (
-            <button
-              className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full flex items-center justify-center transition-colors bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSubscriptionToggle();
-              }}
-              title="Track this route"
-            >
-              <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-          )}
+          <StarToggleButton
+            active={isSubscribed}
+            onToggle={onSubscriptionToggle}
+            title={isSubscribed ? 'Stop tracking' : 'Track this route'}
+          />
         </div>
       </div>
     );

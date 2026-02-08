@@ -105,6 +105,9 @@ interface BusMapProps {
   nearbyStops?: Array<Stop & { distance: number }>;
   onStopClick?: (stop: Stop) => void;
   onStopDeselect?: () => void;
+  onVehicleDeselect?: () => void;
+  onRouteActivate?: (route: Route) => void;
+  onBackToStop?: () => void;
   nearbyRouteIds?: string[];
 }
 
@@ -265,7 +268,7 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
 });
 SelectedVehiclePopover.displayName = 'SelectedVehiclePopover';
 
-const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, activatedRoute, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, onStopDeselect, nearbyRouteIds }: BusMapProps) => {
+const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, activatedRoute, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, onStopDeselect, onVehicleDeselect, onRouteActivate, onBackToStop, nearbyRouteIds }: BusMapProps) => {
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
   const userLocation = useLocationStore((state) => state.userLocation);
@@ -777,8 +780,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     if (subscribedRoutes.some((r) => r.gtfsId === selectedRouteId)) {
       onUnsubscribe?.(selectedRouteId);
     }
-    onRouteSelect?.(null);
-  }, [selectedRouteId, subscribedRoutes, onUnsubscribe, onRouteSelect]);
+  }, [selectedRouteId, subscribedRoutes, onUnsubscribe]);
 
   const handleRouteSubscribe = useCallback(() => {
     if (!selectedRoute || !selectedRouteId) return;
@@ -1084,6 +1086,41 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     if (selectedStop) onStopDeselect?.();
   }, [onVehicleSelect, onRouteSelect, onStopDeselect, selectedStop]);
 
+  // Handle click on route line layer
+  const handleRouteLineClick = useCallback(
+    (evt: MapLayerMouseEvent) => {
+      if (!evt.features || evt.features.length === 0) return;
+      const feature = evt.features[0];
+      const routeId = feature.properties?.routeId as string | undefined;
+      if (!routeId) return;
+
+      // Resolve full route info
+      const subscribed = subscribedRoutes.find((r) => r.gtfsId === routeId);
+      if (subscribed) {
+        evt.originalEvent.stopPropagation();
+        onRouteActivate?.(subscribed);
+        return;
+      }
+      // Try nearby stops
+      if (nearbyStops) {
+        for (const stop of nearbyStops) {
+          const sr = stop.routes.find((r) => r.gtfsId === routeId);
+          if (sr) {
+            evt.originalEvent.stopPropagation();
+            onRouteActivate?.({ gtfsId: sr.gtfsId, shortName: sr.shortName, longName: sr.longName, mode: sr.mode as Route['mode'] });
+            return;
+          }
+        }
+      }
+      // Fall back to activated route
+      if (activatedRoute && activatedRoute.gtfsId === routeId) {
+        evt.originalEvent.stopPropagation();
+        onRouteActivate?.(activatedRoute);
+      }
+    },
+    [subscribedRoutes, nearbyStops, activatedRoute, onRouteActivate]
+  );
+
   // Handle click on stop WebGL layer
   const handleStopLayerClick = useCallback(
     (evt: MapLayerMouseEvent) => {
@@ -1131,13 +1168,15 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         // Check if clicked on a vehicle
         if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'vehicle-circles') {
           handleVehicleLayerClick(e);
-        } else if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'stop-circles') {
+        } else if (e.features && e.features.length > 0 && (e.features[0].layer?.id === 'stop-circles' || e.features[0].layer?.id === 'stop-circles-hitarea')) {
           handleStopLayerClick(e);
+        } else if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'route-lines') {
+          handleRouteLineClick(e);
         } else {
           handleMapClick();
         }
       }}
-      interactiveLayerIds={['vehicle-circles', 'stop-circles']}
+      interactiveLayerIds={['vehicle-circles', 'stop-circles', 'stop-circles-hitarea', 'route-lines']}
       cursor="pointer"
       mapStyle={mapStyleUrl}
       style={{ width: '100%', height: '100%' }}
@@ -1210,6 +1249,21 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
       {/* Stop markers */}
       <Source id="stops" type="geojson" data={stopsGeoJson}>
+        {/* Invisible larger hit area for easier tapping */}
+        <Layer
+          id="stop-circles-hitarea"
+          type="circle"
+          paint={{
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              10, 10,
+              13, 14,
+              15, 18,
+              18, 22,
+            ],
+            'circle-color': 'transparent',
+          }}
+        />
         <Layer
           id="stop-circles"
           type="circle"
@@ -1232,24 +1286,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             'circle-stroke-opacity': 0.85,
           }}
         />
-        <Layer
-          id="stop-labels"
-          type="symbol"
-          filter={['get', 'isSelected']}
-          layout={{
-            'text-field': ['get', 'name'],
-            'text-size': 12,
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-            'text-anchor': 'top',
-            'text-offset': [0, 0.8],
-            'text-allow-overlap': false,
-          }}
-          paint={{
-            'text-color': '#374151',
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 1.5,
-          }}
-        />
+
       </Source>
 
       {/* Vehicle markers */}
@@ -1268,7 +1305,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           <SelectedVehiclePopover
             key={selectedVehicle.vehicleId}
             vehicle={selectedVehicle}
-            onClose={() => onVehicleSelect?.(null)}
+            onClose={() => selectedStop ? onVehicleDeselect?.() : onVehicleSelect?.(null)}
             onSubscribe={handlePopoverSubscribe}
             onUnsubscribe={handlePopoverUnsubscribe}
           />
@@ -1292,6 +1329,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
               onClose={() => onRouteSelect?.(null)}
               onSubscribe={handleRouteSubscribe}
               onUnsubscribe={handleRouteUnsubscribe}
+              onBackToStop={onBackToStop}
             />
           </Marker>
         )}
@@ -1310,6 +1348,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             <StopPopover
               stop={selectedStop}
               onClose={() => onStopDeselect?.()}
+              onRouteActivate={onRouteActivate}
             />
           </Marker>
         )}

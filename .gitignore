@@ -4,3 +4,4 @@ node_modules
 .cache
 .env
 *.tsbuildinfo
+TODO.md

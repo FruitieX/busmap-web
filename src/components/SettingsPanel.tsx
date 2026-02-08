@@ -76,22 +76,55 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
   const subscribedStopCount = useSubscribedStopStore((state) => state.subscribedStops.length);
   const totalSavedCount = subscribedCount + subscribedStopCount;
 
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date'>('idle');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'up-to-date'>('idle');
 
   const checkForUpdates = useCallback(async () => {
     setUpdateStatus('checking');
     try {
       const registration = await navigator.serviceWorker?.getRegistration();
-      if (registration) {
-        await registration.update();
-        // If no waiting worker appeared, we're up to date
-        if (!registration.waiting) {
-          setUpdateStatus('up-to-date');
-          setTimeout(() => setUpdateStatus('idle'), 3000);
-        }
-      } else {
+      if (!registration) {
         setUpdateStatus('up-to-date');
-        setTimeout(() => setUpdateStatus('idle'), 3000);
+        setTimeout(() => setUpdateStatus('idle'), 5000);
+        return;
+      }
+
+      let updateFound = false;
+
+      const watchInstallingWorker = (worker: ServiceWorker) => {
+        updateFound = true;
+        // If already installed/activated, the toast will handle it
+        if (worker.state === 'installed' || worker.state === 'activated') {
+          setUpdateStatus('idle');
+          return;
+        }
+        setUpdateStatus('updating');
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' || worker.state === 'activated' || worker.state === 'redundant') {
+            setUpdateStatus('idle');
+          }
+        });
+      };
+
+      // Listen for new SW *before* triggering the update check
+      registration.addEventListener('updatefound', () => {
+        if (registration.installing) {
+          watchInstallingWorker(registration.installing);
+        }
+      }, { once: true });
+
+      await registration.update();
+
+      // After update() resolves, check if an update was already detected
+      if (!updateFound) {
+        if (registration.installing) {
+          watchInstallingWorker(registration.installing);
+        } else if (registration.waiting) {
+          // Already installed and waiting — toast will appear
+          setUpdateStatus('idle');
+        } else {
+          setUpdateStatus('up-to-date');
+          setTimeout(() => setUpdateStatus('idle'), 5000);
+        }
       }
     } catch {
       setUpdateStatus('idle');
@@ -367,7 +400,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
                   <button
                     onClick={checkForUpdates}
-                    disabled={updateStatus === 'checking'}
+                    disabled={updateStatus === 'checking' || updateStatus === 'updating'}
                     className="flex items-center justify-center gap-2 w-full p-2.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {updateStatus === 'checking' ? (
@@ -377,6 +410,14 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
                         Checking...
+                      </>
+                    ) : updateStatus === 'updating' ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Downloading update...
                       </>
                     ) : updateStatus === 'up-to-date' ? (
                       <>

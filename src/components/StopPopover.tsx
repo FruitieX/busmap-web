@@ -1,25 +1,26 @@
 import { memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import type { Stop } from '@/types';
+import type { Stop, Route } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useSubscribedStopStore } from '@/stores';
 
 interface StopPopoverProps {
   stop: Stop;
   onClose: () => void;
+  onRouteActivate?: (route: Route) => void;
 }
 
-const StopPopoverComponent = ({ stop, onClose }: StopPopoverProps) => {
+const StopPopoverComponent = ({ stop, onClose, onRouteActivate }: StopPopoverProps) => {
   const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
   const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
   const saved = isStopSubscribed(stop.gtfsId);
 
   // Group routes by mode, sorted numerically
   const routeLabels = useMemo(() => {
-    const uniqueRoutes = new Map<string, { shortName: string; mode: string }>();
+    const uniqueRoutes = new Map<string, { gtfsId: string; shortName: string; longName: string; mode: string }>();
     for (const r of stop.routes) {
       if (!uniqueRoutes.has(r.gtfsId)) {
-        uniqueRoutes.set(r.gtfsId, { shortName: r.shortName, mode: r.mode });
+        uniqueRoutes.set(r.gtfsId, { gtfsId: r.gtfsId, shortName: r.shortName, longName: r.longName, mode: r.mode });
       }
     }
     return Array.from(uniqueRoutes.values()).sort((a, b) => {
@@ -84,14 +85,19 @@ const StopPopoverComponent = ({ stop, onClose }: StopPopoverProps) => {
       {/* Route badges */}
       {routeLabels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2 sm:mb-3">
-          {routeLabels.slice(0, 12).map(({ shortName, mode }) => (
-            <span
+          {routeLabels.slice(0, 12).map(({ gtfsId, shortName, longName, mode }) => (
+            <button
               key={shortName}
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-semibold text-white"
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-semibold text-white hover:opacity-80 transition-opacity cursor-pointer"
               style={{ backgroundColor: TRANSPORT_COLORS[mode as keyof typeof TRANSPORT_COLORS] ?? TRANSPORT_COLORS.bus }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRouteActivate?.({ gtfsId, shortName, longName, mode: mode as Route['mode'] });
+              }}
+              title={longName}
             >
               {shortName}
-            </span>
+            </button>
           ))}
           {routeLabels.length > 12 && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700">

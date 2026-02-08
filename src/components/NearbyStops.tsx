@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useStopStore, useSubscribedStopStore, useSettingsStore } from '@/stores';
-import { ConfirmDeleteButton } from './ConfirmDeleteButton';
+import { StarToggleButton } from './StarToggleButton';
+import { getStopTermini } from '@/lib';
 import { KM_IN_METERS } from '@/constants';
 
 interface NearbyStopsProps {
@@ -44,6 +45,8 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
     });
   }, [stop.routes]);
 
+  const termini = useMemo(() => getStopTermini(stop.routes), [stop.routes]);
+
   return (
     <div
       className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-150 ${isSelected ? 'outline outline-2 outline-primary-500' : ''}`}
@@ -74,27 +77,30 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
             )}
           </div>
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-gray-500 dark:text-gray-400 capitalize">{stop.vehicleMode}</span>
+            <span className="text-gray-500 dark:text-gray-400 capitalize shrink-0">{stop.vehicleMode}</span>
             {stop.distance !== undefined && (
               <>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-500 dark:text-gray-400">{formatDistance(stop.distance)}</span>
+                <span className="text-gray-400 shrink-0">•</span>
+                <span className="text-gray-500 dark:text-gray-400 shrink-0">{formatDistance(stop.distance)}</span>
               </>
             )}
-            <span className="text-gray-400">•</span>
-            <span className="text-gray-500 dark:text-gray-400">{routeLabels.length} routes</span>
+            <span className="text-gray-400 shrink-0">•</span>
+            <span className="text-gray-500 dark:text-gray-400 truncate">{routeLabels.length} routes{termini && ` (${termini})`}</span>
           </div>
           {/* Route badges */}
           <div className="flex flex-wrap gap-1 mt-1">
-            {routeLabels.slice(0, 8).map(({ shortName, mode }) => (
-              <span
-                key={shortName}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold text-white"
-                style={{ backgroundColor: TRANSPORT_COLORS[mode as keyof typeof TRANSPORT_COLORS] ?? TRANSPORT_COLORS.bus }}
-              >
-                {shortName}
-              </span>
-            ))}
+            {routeLabels.slice(0, 8).map(({ shortName, mode }) => {
+              const badgeColor = TRANSPORT_COLORS[mode as keyof typeof TRANSPORT_COLORS] ?? TRANSPORT_COLORS.bus;
+              return (
+                <span
+                  key={shortName}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border"
+                  style={{ color: badgeColor, borderColor: badgeColor }}
+                >
+                  {shortName}
+                </span>
+              );
+            })}
             {routeLabels.length > 8 && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-gray-700">
                 +{routeLabels.length - 8}
@@ -104,25 +110,11 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
         </div>
 
         {/* Subscribe/unsubscribe button */}
-        {isSubscribed ? (
-          <ConfirmDeleteButton
-            onConfirm={onSubscriptionToggle}
-            title="Remove stop"
-          />
-        ) : (
-          <button
-            className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSubscriptionToggle();
-            }}
-            title="Save this stop"
-          >
-            <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        )}
+        <StarToggleButton
+          active={isSubscribed}
+          onToggle={onSubscriptionToggle}
+          title={isSubscribed ? 'Remove stop' : 'Save this stop'}
+        />
       </div>
     </div>
   );

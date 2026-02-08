@@ -12,6 +12,7 @@ interface RoutePopoverProps {
   onClose: () => void;
   onSubscribe: () => void;
   onUnsubscribe: () => void;
+  onBackToStop?: () => void;
 }
 
 const formatDistance = (meters: number): string => {
@@ -44,7 +45,7 @@ const calculateRouteLength = (patterns: RoutePattern[]): number => {
   return maxLength;
 };
 
-const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe }: RoutePopoverProps) => {
+const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe, onBackToStop }: RoutePopoverProps) => {
   const color = ('color' in route && route.color) || TRANSPORT_COLORS[route.mode ?? 'bus'] || TRANSPORT_COLORS.bus;
 
   const stats = useMemo(() => {
@@ -71,6 +72,17 @@ const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClos
 
       {/* Header */}
       <div className="flex items-start gap-2 sm:gap-3 mb-1.5 sm:mb-2">
+        {onBackToStop && (
+          <button
+            onClick={onBackToStop}
+            className="shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Back to stop"
+          >
+            <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
         <div
           className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs sm:text-sm shrink-0"
           style={{ backgroundColor: color }}

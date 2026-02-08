@@ -19,6 +19,7 @@ interface BottomSheetProps {
   onHeightMotionValue?: (mv: MotionValue<number>) => void;
   onClose?: () => void;
   onExpand?: (expand: () => void) => void;
+  contentRef?: React.Ref<HTMLDivElement>;
 }
 
 export const BottomSheet = ({
@@ -32,6 +33,7 @@ export const BottomSheet = ({
   onHeightMotionValue,
   onClose,
   onExpand,
+  contentRef,
 }: BottomSheetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
@@ -128,7 +130,7 @@ export const BottomSheet = ({
         {/* Fixed header */}
         {header && <div className="shrink-0">{header}</div>}
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0 relative">{children}</div>
+        <div ref={contentRef} className="flex-1 overflow-y-auto scrollbar-thin min-h-0 relative">{children}</div>
       </div>
     </motion.div>
   );
