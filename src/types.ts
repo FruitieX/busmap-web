@@ -176,6 +176,7 @@ export interface Settings {
   showNearbyRoutes: boolean;
   animateVehicles: boolean;
   developerMode: boolean;
+  sheetHeight: number; // persisted bottom sheet height
 }
 
 // Map viewport state

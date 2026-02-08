@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import {
   BusMap,
   VehicleList,
@@ -27,7 +27,6 @@ import { TRANSPORT_COLORS } from '@/types';
 import {
   SHEET_MIN_HEIGHT,
   SHEET_MAX_HEIGHT,
-  SHEET_DEFAULT_HEIGHT,
   SHEET_EXPAND_THRESHOLD,
   FAB_TOP_OFFSET,
   VEHICLE_FLY_TO_ZOOM,
@@ -58,18 +57,6 @@ const LocationIcon = () => (
   </svg>
 );
 
-const ZoomInIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-);
-
-const ZoomOutIcon = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-  </svg>
-);
-
 
 
 type SheetTab = 'vehicles' | 'routes' | 'stops';
@@ -95,10 +82,18 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<SheetTab>(loadSavedTab);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-  const [sheetHeight, setSheetHeight] = useState(SHEET_DEFAULT_HEIGHT);
+  const [sheetHeight, setSheetHeight] = useState(() => useSettingsStore.getState().sheetHeight);
+  const setPersistedSheetHeight = useSettingsStore((state) => state.setSheetHeight);
+  const sheetPersistTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const [nearbyMenuOpen, setNearbyMenuOpen] = useState(false);
   const nearbyMenuRef = useRef<HTMLDivElement>(null);
   const expandSheetRef = useRef<(() => void) | null>(null);
+
+  // Motion-value-driven button position (no React re-render lag)
+  const fallbackHeight = useMotionValue(sheetHeight);
+  const sheetHeightMV = useRef<MotionValue<number>>(fallbackHeight);
+  const handleHeightMV = useCallback((mv: MotionValue<number>) => { sheetHeightMV.current = mv; }, []);
+  const fabBottom = useTransform(sheetHeightMV.current, (h: number) => h + 16);
 
   const switchTab = useCallback((tab: SheetTab) => {
     if (sheetHeight < SHEET_EXPAND_THRESHOLD) {
@@ -339,17 +334,6 @@ const App = () => {
     }
   }, [flyToUserLocation, clearSelectedStop, cleanupTempSubscriptions]);
 
-  // Handle zoom with animation
-  const handleZoomIn = useCallback(() => {
-    const { viewport, flyToLocation } = useLocationStore.getState();
-    flyToLocation(viewport.latitude, viewport.longitude, Math.min(viewport.zoom + 1, 20));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    const { viewport, flyToLocation } = useLocationStore.getState();
-    flyToLocation(viewport.latitude, viewport.longitude, Math.max(viewport.zoom - 1, 1));
-  }, []);
-
   // Handle stop click from list or map
   const handleStopClick = useCallback(
     (stop: Stop) => {
@@ -527,26 +511,8 @@ const App = () => {
       {/* Status bar with search */}
       <StatusBar onActivateRoute={handleActivateRoute} onToggleRouteSubscription={handleSelectRoute} nearbyStops={nearbyStops} onStopClick={handleStopClick} />
 
-      {/* Floating action buttons - top right corner */}
-      <div className="fixed right-4 z-30 flex flex-col gap-2" style={{ top: FAB_TOP_OFFSET }}>
-        <FloatingActionButton
-          icon={<ZoomInIcon />}
-          onClick={handleZoomIn}
-          label="Zoom in"
-          size="sm"
-        />
-        <FloatingActionButton
-          icon={<ZoomOutIcon />}
-          onClick={handleZoomOut}
-          label="Zoom out"
-          size="sm"
-        />
-        <div className="h-2" />
-<FloatingActionButton
-          icon={<LocationIcon />}
-          onClick={handleLocateMe}
-          label="Go to my location"
-        />
+      {/* Settings button - top right */}
+      <div className="fixed right-4 z-30" style={{ top: FAB_TOP_OFFSET }}>
         <FloatingActionButton
           icon={<SettingsIcon />}
           onClick={() => setIsSettingsOpen(true)}
@@ -554,12 +520,30 @@ const App = () => {
         />
       </div>
 
+      {/* Locate me button - bottom right, moves with bottom sheet */}
+      <motion.div
+        className="fixed right-4 z-30"
+        style={{ bottom: fabBottom }}
+      >
+        <FloatingActionButton
+          icon={<LocationIcon />}
+          onClick={handleLocateMe}
+          label="Go to my location"
+        />
+      </motion.div>
+
       {/* Bottom sheet with tabs */}
       <BottomSheet
         minHeight={SHEET_MIN_HEIGHT}
         maxHeight={SHEET_MAX_HEIGHT}
-        defaultHeight={SHEET_DEFAULT_HEIGHT}
-        onHeightChange={(h) => { setSheetHeight(h); setBottomPadding(h); }}
+        initialHeight={useSettingsStore.getState().sheetHeight}
+        onHeightMotionValue={handleHeightMV}
+        onHeightChange={(h) => {
+          setSheetHeight(h);
+          setBottomPadding(h);
+          clearTimeout(sheetPersistTimeoutRef.current);
+          sheetPersistTimeoutRef.current = setTimeout(() => setPersistedSheetHeight(h), 300);
+        }}
         onExpand={(expand) => { expandSheetRef.current = expand; }}
         header={
           <div className="flex items-center gap-2 mb-3 pt-1">

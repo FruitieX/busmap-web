@@ -14,6 +14,7 @@ interface SettingsState extends Settings {
   setShowNearbyRoutes: (show: boolean) => void;
   setAnimateVehicles: (animate: boolean) => void;
   setDeveloperMode: (enabled: boolean) => void;
+  setSheetHeight: (height: number) => void;
   reset: () => void;
 }
 
@@ -28,6 +29,7 @@ const defaultSettings: Settings = {
   showNearbyRoutes: false,
   animateVehicles: true,
   developerMode: false,
+  sheetHeight: 340,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -46,13 +48,14 @@ export const useSettingsStore = create<SettingsState>()(
       setShowNearbyRoutes: (showNearbyRoutes) => set({ showNearbyRoutes }),
       setAnimateVehicles: (animateVehicles) => set({ animateVehicles }),
       setDeveloperMode: (developerMode) => set({ developerMode }),
+      setSheetHeight: (sheetHeight) => set({ sheetHeight }),
       reset: () => set(defaultSettings),
     }),
     {
       name: 'busmap-settings',
-      version: 7,
+      version: 8,
       migrate: (persisted, version) => {
-        console.log(`[busmap] Migrating settings from version ${version} to 7`, persisted);
+        console.log(`[busmap] Migrating settings from version ${version} to 8`, persisted);
         const migrated = { ...defaultSettings, ...(persisted as object) };
         console.log('[busmap] Migrated settings:', migrated);
         return migrated;

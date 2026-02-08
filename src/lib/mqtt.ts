@@ -436,14 +436,41 @@ class MqttService {
     if (!this.isPaused) return;
     this.isPaused = false;
     console.log('MQTT resumed (tab visible)');
+
+    // Always reset reconnect attempts so we get a fresh retry budget
+    this.reconnectAttempts = 0;
     
-    // Update connection status based on actual client state
     if (this.client?.connected) {
       useVehicleStore.getState().setConnectionStatus('connected');
-    } else if (this.client) {
-      // Client exists but not connected - trigger reconnect
-      useVehicleStore.getState().setConnectionStatus('connecting');
-      this.client.reconnect();
+      // Force resubscribe — the broker may have dropped our session while idle
+      this.subscriptions.forEach((topic) => {
+        this.client?.subscribe(topic, { qos: 0 });
+      });
+    } else {
+      // Client ended or disconnected — tear down and create a fresh connection
+      // so we don't fight stale socket state
+      const savedSubscriptions = new Set(this.subscriptions);
+      const savedNearbyTopics = [...this.currentNearbyTopics];
+      const savedNearbyCenter = this.nearbyCenter;
+      const savedNearbyRadius = this.nearbyRadius;
+      const savedActiveRouteIds = new Set(this.activeRouteIds);
+
+      // Clean up old client without clearing our subscription bookkeeping
+      if (this.client) {
+        try { this.client.end(true); } catch { /* ignore */ }
+        this.client = null;
+      }
+
+      // Restore bookkeeping so connect() resubscribes via 'connect' handler
+      this.subscriptions = savedSubscriptions;
+      this.currentNearbyTopics = savedNearbyTopics;
+      this.nearbyCenter = savedNearbyCenter;
+      this.nearbyRadius = savedNearbyRadius;
+      this.activeRouteIds = savedActiveRouteIds;
+
+      this.connect().catch((err) => {
+        console.error('MQTT reconnect on resume failed:', err);
+      });
     }
   }
 }

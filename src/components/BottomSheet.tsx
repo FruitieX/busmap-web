@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, type ReactNode } from 'react';
-import { motion, useMotionValue, useTransform, useDragControls, animate } from 'framer-motion';
+import { motion, useMotionValue, useTransform, useDragControls, animate, type MotionValue } from 'framer-motion';
 import {
   SHEET_MIN_HEIGHT,
   SHEET_MAX_HEIGHT,
@@ -14,7 +14,9 @@ interface BottomSheetProps {
   minHeight?: number;
   maxHeight?: number;
   defaultHeight?: number;
+  initialHeight?: number;
   onHeightChange?: (height: number) => void;
+  onHeightMotionValue?: (mv: MotionValue<number>) => void;
   onClose?: () => void;
   onExpand?: (expand: () => void) => void;
 }
@@ -25,14 +27,21 @@ export const BottomSheet = ({
   minHeight = SHEET_MIN_HEIGHT,
   maxHeight = SHEET_MAX_HEIGHT,
   defaultHeight = SHEET_DEFAULT_HEIGHT,
+  initialHeight,
   onHeightChange,
+  onHeightMotionValue,
   onClose,
   onExpand,
 }: BottomSheetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
 
-  const y = useMotionValue(0);
+  // If an initialHeight is provided, offset y so the sheet starts at that height
+  // height = defaultHeight - y  =>  y = defaultHeight - initialHeight
+  const clampedInitial = initialHeight
+    ? Math.max(minHeight, Math.min(maxHeight, initialHeight))
+    : defaultHeight;
+  const y = useMotionValue(defaultHeight - clampedInitial);
   // height = defaultHeight - y: dragging down (positive y) shrinks, dragging up (negative y) grows
   const height = useTransform(y, [defaultHeight - minHeight, -(maxHeight - defaultHeight)], [minHeight, maxHeight]);
 
@@ -45,6 +54,11 @@ export const BottomSheet = ({
   useEffect(() => {
     onExpand?.(expand);
   }, [expand, onExpand]);
+
+  // Expose height motion value for direct binding
+  useEffect(() => {
+    onHeightMotionValue?.(height);
+  }, [height, onHeightMotionValue]);
 
   // Report height changes during drag
   useEffect(() => {
