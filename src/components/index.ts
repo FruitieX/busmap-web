@@ -4,6 +4,8 @@ export type { InterpolatedPosition } from './VehicleMarker';
 export { VehiclePopover } from './VehiclePopover';
 export { RoutePopover } from './RoutePopover';
 export { VehicleList } from './VehicleList';
+export { NearbyStops } from './NearbyStops';
+export { StopDetails } from './StopDetails';
 export { BottomSheet } from './BottomSheet';
 export { StatusBar } from './StatusBar';
 export { FloatingActionButton } from './FloatingActionButton';

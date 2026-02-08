@@ -60,6 +60,8 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setMapStyle,
     showRouteLines,
     setShowRouteLines,
+    showStops,
+    setShowStops,
     animateVehicles,
     setAnimateVehicles,
     developerMode,
@@ -252,6 +254,22 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       type="checkbox"
                       checked={showRouteLines}
                       onChange={(e) => setShowRouteLines(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+
+                  {/* Show stops on map */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-200">Show stops on map</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Display transit stop markers on the map
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showStops}
+                      onChange={(e) => setShowStops(e.target.checked)}
                       className="w-5 h-5 accent-primary-500"
                     />
                   </label>

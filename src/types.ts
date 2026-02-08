@@ -117,6 +117,41 @@ export const MAP_STYLES: Record<MapStyle, { label: string; url: string }> = {
   },
 };
 
+// Stop route info (route that serves a stop)
+export interface StopRoute {
+  gtfsId: string;
+  shortName: string;
+  longName: string;
+  mode: TransportMode;
+}
+
+// Transit stop
+export interface Stop {
+  gtfsId: string;
+  name: string;
+  code: string;
+  lat: number;
+  lon: number;
+  vehicleMode: TransportMode;
+  routes: StopRoute[];
+}
+
+// Upcoming departure at a stop (from Digitransit stoptimes API)
+export interface StopDeparture {
+  scheduledDeparture: number; // seconds from midnight of serviceDay
+  realtimeDeparture: number;
+  departureDelay: number; // seconds (positive = late)
+  realtime: boolean;
+  realtimeState: string; // SCHEDULED | UPDATED | CANCELED etc.
+  headsign: string;
+  serviceDay: number; // epoch seconds for midnight of service day
+  routeGtfsId: string;
+  routeShortName: string;
+  routeLongName: string;
+  routeMode: TransportMode;
+  directionId: number; // GTFS direction (0 or 1)
+}
+
 // App settings
 export interface Settings {
   showNearby: boolean;
@@ -125,6 +160,8 @@ export interface Settings {
   theme: 'light' | 'dark' | 'system';
   mapStyle: MapStyle;
   showRouteLines: boolean;
+  showStops: boolean;
+  showNearbyRoutes: boolean;
   animateVehicles: boolean;
   developerMode: boolean;
 }

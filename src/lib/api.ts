@@ -1,4 +1,4 @@
-import type { Route, RoutePattern, TransportMode } from '@/types';
+import type { Route, RoutePattern, TransportMode, Stop, StopRoute, StopDeparture } from '@/types';
 
 const API_ENDPOINT = 'https://api.digitransit.fi/routing/v2/hsl/gtfs/v1';
 
@@ -39,7 +39,7 @@ const graphqlFetch = async <T>(query: string): Promise<T> => {
 };
 
 // Infer transport mode from route ID or normalize mode string
-const normalizeMode = (mode?: string, gtfsId?: string): TransportMode => {
+export const normalizeMode = (mode?: string, gtfsId?: string): TransportMode => {
   if (mode) {
     const m = mode.toLowerCase();
     if (m === 'subway') return 'metro';
@@ -235,4 +235,206 @@ export const setCachedRoutes = (routes: Route[]): void => {
   } catch {
     // Ignore storage errors
   }
+};
+
+// Fetch nearby stops by location and radius
+interface StopsByRadiusResponse {
+  stopsByRadius: {
+    edges: Array<{
+      node: {
+        stop: {
+          gtfsId: string;
+          name: string;
+          code: string;
+          lat: number;
+          lon: number;
+          vehicleMode: string;
+          routes: Array<{
+            gtfsId: string;
+            shortName: string;
+            longName: string;
+            mode: string;
+          }>;
+        };
+        distance: number;
+      };
+    }>;
+  };
+}
+
+export const fetchNearbyStops = async (
+  lat: number,
+  lon: number,
+  radius: number,
+): Promise<Array<Stop & { distance: number }>> => {
+  const query = `{
+    stopsByRadius(lat: ${lat}, lon: ${lon}, radius: ${radius}, first: 300) {
+      edges {
+        node {
+          stop {
+            gtfsId
+            name
+            code
+            lat
+            lon
+            vehicleMode
+            routes {
+              gtfsId
+              shortName
+              longName
+              mode
+            }
+          }
+          distance
+        }
+      }
+    }
+  }`;
+
+  const data = await graphqlFetch<StopsByRadiusResponse>(query);
+
+  return data.stopsByRadius.edges.map(({ node }) => ({
+    gtfsId: node.stop.gtfsId,
+    name: node.stop.name,
+    code: node.stop.code || '',
+    lat: node.stop.lat,
+    lon: node.stop.lon,
+    vehicleMode: normalizeMode(node.stop.vehicleMode),
+    routes: node.stop.routes.map((r) => ({
+      gtfsId: r.gtfsId,
+      shortName: r.shortName,
+      longName: r.longName,
+      mode: normalizeMode(r.mode, r.gtfsId),
+    })),
+    distance: node.distance,
+  }));
+};
+
+// Fetch stop timetable with upcoming departures and direction info
+export interface StopTimetableResult {
+  departures: StopDeparture[];
+  directions: Record<string, number[]>; // routeGtfsId -> allowed MQTT direction values (1 or 2)
+}
+
+interface StopTimetableResponse {
+  stop: {
+    stoptimesWithoutPatterns: Array<{
+      scheduledDeparture: number;
+      realtimeDeparture: number;
+      departureDelay: number;
+      realtime: boolean;
+      realtimeState: string;
+      headsign: string;
+      serviceDay: number;
+      trip: {
+        directionId: string;
+        route: {
+          gtfsId: string;
+          shortName: string;
+          longName: string;
+          mode: string;
+        };
+      };
+    }>;
+  };
+}
+
+export const fetchStopTimetable = async (stopId: string): Promise<StopTimetableResult> => {
+  const query = `{
+    stop(id: "${stopId}") {
+      stoptimesWithoutPatterns(numberOfDepartures: 20) {
+        scheduledDeparture
+        realtimeDeparture
+        departureDelay
+        realtime
+        realtimeState
+        headsign
+        serviceDay
+        trip {
+          directionId
+          route {
+            gtfsId
+            shortName
+            longName
+            mode
+          }
+        }
+      }
+    }
+  }`;
+
+  const data = await graphqlFetch<StopTimetableResponse>(query);
+
+  const directionMap: Record<string, Set<number>> = {};
+  const departures: StopDeparture[] = data.stop.stoptimesWithoutPatterns.map((st) => {
+    const gtfsDir = parseInt(st.trip.directionId, 10);
+    const mqttDir = gtfsDir + 1; // GTFS 0 -> MQTT 1, GTFS 1 -> MQTT 2
+
+    if (!directionMap[st.trip.route.gtfsId]) {
+      directionMap[st.trip.route.gtfsId] = new Set();
+    }
+    directionMap[st.trip.route.gtfsId].add(mqttDir);
+
+    return {
+      scheduledDeparture: st.scheduledDeparture,
+      realtimeDeparture: st.realtimeDeparture,
+      departureDelay: st.departureDelay,
+      realtime: st.realtime,
+      realtimeState: st.realtimeState,
+      headsign: st.headsign,
+      serviceDay: st.serviceDay,
+      routeGtfsId: st.trip.route.gtfsId,
+      routeShortName: st.trip.route.shortName,
+      routeLongName: st.trip.route.longName,
+      routeMode: normalizeMode(st.trip.route.mode, st.trip.route.gtfsId),
+      directionId: gtfsDir,
+    };
+  });
+
+  const directions: Record<string, number[]> = {};
+  for (const [routeId, dirs] of Object.entries(directionMap)) {
+    directions[routeId] = Array.from(dirs);
+  }
+
+  return { departures, directions };
+};
+
+// Fetch routes for a specific stop
+interface StopRoutesResponse {
+  stop: {
+    gtfsId: string;
+    name: string;
+    code: string;
+    lat: number;
+    lon: number;
+    vehicleMode: string;
+    routes: Array<{
+      gtfsId: string;
+      shortName: string;
+      longName: string;
+      mode: string;
+    }>;
+  };
+}
+
+export const fetchStopRoutes = async (stopId: string): Promise<StopRoute[]> => {
+  const query = `{
+    stop(id: "${stopId}") {
+      routes {
+        gtfsId
+        shortName
+        longName
+        mode
+      }
+    }
+  }`;
+
+  const data = await graphqlFetch<StopRoutesResponse>(query);
+
+  return data.stop.routes.map((r) => ({
+    gtfsId: r.gtfsId,
+    shortName: r.shortName,
+    longName: r.longName,
+    mode: normalizeMode(r.mode, r.gtfsId),
+  }));
 };

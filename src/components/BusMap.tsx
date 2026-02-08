@@ -2,12 +2,12 @@ import { useRef, useCallback, useMemo, memo, useEffect, useState } from 'react';
 import Map, { Marker, Source, Layer, AttributionControl } from 'react-map-gl/maplibre';
 import type { LineLayerSpecification, CircleLayerSpecification, SymbolLayerSpecification, MapRef, ViewStateChangeEvent, MapLayerMouseEvent } from 'react-map-gl/maplibre';
 import { AnimatePresence } from 'framer-motion';
-import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore } from '@/stores';
+import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore, useStopStore } from '@/stores';
 import { useAnimatedPosition } from './VehicleMarker';
 import { extrapolate, interpolateVehicle, pruneInterpolationStates } from '@/lib/interpolation';
 import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
-import type { TrackedVehicle, RoutePattern, Route } from '@/types';
+import type { TrackedVehicle, RoutePattern, Route, Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import type { FeatureCollection, LineString, Polygon, Point, Feature } from 'geojson';
 import { TOP_BAR_HEIGHT, getVehicleTiming } from '@/constants';
@@ -100,6 +100,8 @@ interface BusMapProps {
   selectedRouteId?: string | null;
   onRouteSelect?: (routeId: string | null) => void;
   bottomPadding?: number; // in pixels, for bottom sheet
+  nearbyStops?: Array<Stop & { distance: number }>;
+  onStopClick?: (stop: Stop) => void;
 }
 
 const routeLineStyle: LineLayerSpecification = {
@@ -259,7 +261,7 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
 });
 SelectedVehiclePopover.displayName = 'SelectedVehiclePopover';
 
-const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, onRouteSelect, bottomPadding = 200 }: BusMapProps) => {
+const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick }: BusMapProps) => {
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
   const userLocation = useLocationStore((state) => state.userLocation);
@@ -268,7 +270,14 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const vehicles = useMemo(() => Array.from(vehiclesMap.values()), [vehiclesMap]);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const showRouteLines = useSettingsStore((state) => state.showRouteLines);
+  const showStops = useSettingsStore((state) => state.showStops);
   const mapStyleUrl = useSettingsStore((state) => MAP_STYLES[state.mapStyle].url);
+
+  // Stop store
+  const selectedStop = useStopStore((state) => state.selectedStop);
+  const selectedStopRouteIds = useStopStore((state) => state.selectedStopRouteIds);
+  const selectedStopDirections = useStopStore((state) => state.selectedStopDirections);
+  const clearSelectedStop = useStopStore((state) => state.clearSelectedStop);
 
   // Selected vehicle - controlled externally via prop or internally
   const selectedVehicle = useMemo(() => {
@@ -350,6 +359,14 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const selectedRouteIdRef = useRef<string | null | undefined>(selectedRouteId);
   selectedRouteIdRef.current = selectedRouteId;
 
+  // Track selected stop route IDs in ref for rAF loop
+  const selectedStopRouteIdsRef = useRef<Set<string>>(selectedStopRouteIds);
+  selectedStopRouteIdsRef.current = selectedStopRouteIds;
+
+  // Track selected stop directions in ref for rAF loop
+  const selectedStopDirectionsRef = useRef<Record<string, number[]>>(selectedStopDirections);
+  selectedStopDirectionsRef.current = selectedStopDirections;
+
   // Track addArrowImageForColor in ref for rAF loop access
   const addArrowImageForColorRef = useRef(addArrowImageForColor);
   addArrowImageForColorRef.current = addArrowImageForColor;
@@ -366,6 +383,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       const features: Feature<Point, VehicleFeatureProps>[] = [];
       const currentSelectedId = selectedVehicleIdRef.current;
       const currentSelectedRouteId = selectedRouteIdRef.current;
+      const currentStopRouteIds = selectedStopRouteIdsRef.current;
+      const currentStopDirections = selectedStopDirectionsRef.current;
 
       // Get current zoom for scaling
       const zoom = mapRef.current?.getMap()?.getZoom() ?? 14;
@@ -412,12 +431,23 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         // Base opacity from staleness and exit
         let opacity = (1 - staleness) * (1 - exitProgress);
         
-        // Fade factor for vehicles not on the selected route
+        // Fade factor for vehicles not on the selected route or stop
         let routeFadeFactor = 1;
         if (currentSelectedRouteId) {
           const vehicleRouteId = `HSL:${vehicle.routeId}`;
           if (vehicleRouteId !== currentSelectedRouteId) {
             routeFadeFactor = 0.1; // Fade non-selected route vehicles
+          }
+        } else if (currentStopRouteIds.size > 0) {
+          const vehicleRouteId = `HSL:${vehicle.routeId}`;
+          if (!currentStopRouteIds.has(vehicleRouteId)) {
+            routeFadeFactor = 0.1; // Fade vehicles not on stop's routes
+          } else {
+            // Check direction filtering (if timetable data has loaded)
+            const allowedDirs = currentStopDirections[vehicleRouteId];
+            if (allowedDirs && allowedDirs.length > 0 && !allowedDirs.includes(vehicle.direction)) {
+              routeFadeFactor = 0.1; // Fade vehicles going in wrong direction
+            }
           }
         }
         opacity *= routeFadeFactor;
@@ -726,10 +756,12 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       if (!routePatterns) continue;
       const isSelected = selectedRouteId === route.gtfsId;
       
-      // When a route is selected, fade out other routes
+      // When a route or stop is selected, fade out other routes
       let opacity = isSelected ? 1 : 0.6;
       if (selectedRouteId && !isSelected) {
         opacity = 0.1; // Fade non-selected routes when one is selected
+      } else if (selectedStopRouteIds.size > 0) {
+        opacity = selectedStopRouteIds.has(route.gtfsId) ? 1 : 0.1;
       }
 
       for (const pattern of routePatterns) {
@@ -752,7 +784,42 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     }
 
     return { type: 'FeatureCollection', features };
-  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId]);
+  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId, selectedStopRouteIds]);
+
+  // Build GeoJSON for stop markers
+  // Always show the selected stop, even if showStops is off
+  const stopsGeoJson = useMemo((): FeatureCollection<Point> => {
+    if (!nearbyStops || nearbyStops.length === 0) {
+      return { type: 'FeatureCollection', features: [] };
+    }
+
+    const stopsToShow = showStops
+      ? nearbyStops
+      : nearbyStops.filter((s) => selectedStop?.gtfsId === s.gtfsId);
+
+    if (stopsToShow.length === 0) {
+      return { type: 'FeatureCollection', features: [] };
+    }
+
+    return {
+      type: 'FeatureCollection',
+      features: stopsToShow.map((stop) => ({
+        type: 'Feature' as const,
+        properties: {
+          gtfsId: stop.gtfsId,
+          name: stop.name,
+          code: stop.code,
+          vehicleMode: stop.vehicleMode,
+          isSelected: selectedStop?.gtfsId === stop.gtfsId,
+          color: TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus,
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [stop.lon, stop.lat],
+        },
+      })),
+    };
+  }, [showStops, nearbyStops, selectedStop]);
 
   // Build GeoJSON for user location circles (flat on 3D tilted maps)
   const userCirclesGeoJson = useMemo((): FeatureCollection<Polygon> => {
@@ -875,7 +942,25 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const handleMapClick = useCallback(() => {
     onVehicleSelect?.(null);
     onRouteSelect?.(null);
-  }, [onVehicleSelect, onRouteSelect]);
+    clearSelectedStop();
+  }, [onVehicleSelect, onRouteSelect, clearSelectedStop]);
+
+  // Handle click on stop WebGL layer
+  const handleStopLayerClick = useCallback(
+    (evt: MapLayerMouseEvent) => {
+      if (!evt.features || evt.features.length === 0 || !nearbyStops) return;
+      const feature = evt.features[0];
+      const stopId = feature.properties?.gtfsId;
+      if (!stopId) return;
+
+      const stop = nearbyStops.find((s) => s.gtfsId === stopId);
+      if (stop) {
+        evt.originalEvent.stopPropagation();
+        onStopClick?.(stop);
+      }
+    },
+    [nearbyStops, onStopClick]
+  );
 
   // Initial viewport for uncontrolled mode - only used on mount
   const initialViewState = useMemo(() => ({
@@ -897,11 +982,13 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         // Check if clicked on a vehicle
         if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'vehicle-circles') {
           handleVehicleLayerClick(e);
+        } else if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'stop-circles') {
+          handleStopLayerClick(e);
         } else {
           handleMapClick();
         }
       }}
-      interactiveLayerIds={['vehicle-circles']}
+      interactiveLayerIds={['vehicle-circles', 'stop-circles']}
       cursor="pointer"
       mapStyle={mapStyleUrl}
       style={{ width: '100%', height: '100%' }}
@@ -971,6 +1058,50 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
         </Marker>
       )}
+
+      {/* Stop markers */}
+      <Source id="stops" type="geojson" data={stopsGeoJson}>
+        <Layer
+          id="stop-circles"
+          type="circle"
+          paint={{
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              10, ['case', ['get', 'isSelected'], 3, 2],
+              13, ['case', ['get', 'isSelected'], 5, 3],
+              15, ['case', ['get', 'isSelected'], 8, 5],
+              18, ['case', ['get', 'isSelected'], 10, 6],
+            ],
+            'circle-color': ['get', 'color'],
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': [
+              'interpolate', ['linear'], ['zoom'],
+              10, ['case', ['get', 'isSelected'], 1, 0.5],
+              15, ['case', ['get', 'isSelected'], 2, 1],
+            ],
+            'circle-opacity': 0.85,
+            'circle-stroke-opacity': 0.85,
+          }}
+        />
+        <Layer
+          id="stop-labels"
+          type="symbol"
+          filter={['get', 'isSelected']}
+          layout={{
+            'text-field': ['get', 'name'],
+            'text-size': 12,
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+            'text-anchor': 'top',
+            'text-offset': [0, 0.8],
+            'text-allow-overlap': false,
+          }}
+          paint={{
+            'text-color': '#374151',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5,
+          }}
+        />
+      </Source>
 
       {/* Vehicle markers */}
       {/* WebGL layers for all vehicles (including selected) */}
