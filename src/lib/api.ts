@@ -255,6 +255,9 @@ interface StopsByRadiusResponse {
             longName: string;
             mode: string;
           }>;
+          patterns: Array<{
+            headsign: string;
+          }>;
         };
         distance: number;
       };
@@ -284,6 +287,9 @@ export const fetchNearbyStops = async (
               longName
               mode
             }
+            patterns {
+              headsign
+            }
           }
           distance
         }
@@ -293,21 +299,31 @@ export const fetchNearbyStops = async (
 
   const data = await graphqlFetch<StopsByRadiusResponse>(query);
 
-  return data.stopsByRadius.edges.map(({ node }) => ({
-    gtfsId: node.stop.gtfsId,
-    name: node.stop.name,
-    code: node.stop.code || '',
-    lat: node.stop.lat,
-    lon: node.stop.lon,
-    vehicleMode: normalizeMode(node.stop.vehicleMode),
-    routes: node.stop.routes.map((r) => ({
-      gtfsId: r.gtfsId,
-      shortName: r.shortName,
-      longName: r.longName,
-      mode: normalizeMode(r.mode, r.gtfsId),
-    })),
-    distance: node.distance,
-  }));
+  return data.stopsByRadius.edges.map(({ node }) => {
+    // Extract unique headsigns from patterns (direction-specific)
+    const headsigns = [...new Set(
+      node.stop.patterns
+        .map((p) => p.headsign)
+        .filter((h): h is string => !!h),
+    )];
+
+    return {
+      gtfsId: node.stop.gtfsId,
+      name: node.stop.name,
+      code: node.stop.code || '',
+      lat: node.stop.lat,
+      lon: node.stop.lon,
+      vehicleMode: normalizeMode(node.stop.vehicleMode),
+      routes: node.stop.routes.map((r) => ({
+        gtfsId: r.gtfsId,
+        shortName: r.shortName,
+        longName: r.longName,
+        mode: normalizeMode(r.mode, r.gtfsId),
+      })),
+      headsigns,
+      distance: node.distance,
+    };
+  });
 };
 
 // Fetch stop timetable with upcoming departures and direction info

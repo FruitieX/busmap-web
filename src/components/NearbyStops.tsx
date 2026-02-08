@@ -2,10 +2,10 @@ import { memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
-import { useStopStore, useSubscribedStopStore, useSettingsStore } from '@/stores';
-import { StarToggleButton } from './StarToggleButton';
+import { useStopStore, useSubscribedStopStore, useSettingsStore, useLocationStore } from '@/stores';
 import { getStopTermini } from '@/lib';
-import { KM_IN_METERS } from '@/constants';
+import { StarToggleButton } from './StarToggleButton';
+import { EARTH_RADIUS_M, KM_IN_METERS } from '@/constants';
 
 interface NearbyStopsProps {
   stops: Array<Stop & { distance: number }>;
@@ -16,6 +16,19 @@ interface NearbyStopsProps {
 const formatDistance = (meters: number): string => {
   if (meters < KM_IN_METERS) return `${Math.round(meters)} m`;
   return `${(meters / KM_IN_METERS).toFixed(1)} km`;
+};
+
+/** Haversine distance between two lat/lng points in meters */
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 interface StopCardProps {
@@ -45,7 +58,7 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
     });
   }, [stop.routes]);
 
-  const termini = useMemo(() => getStopTermini(stop.routes), [stop.routes]);
+  const termini = stop.routes.length > 0 ? getStopTermini(stop.routes, stop.headsigns) : null;
 
   return (
     <div
@@ -64,9 +77,6 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            {isSubscribed && (
-              <span className="shrink-0 w-2 h-2 rounded-full bg-primary-500" title="Saved" />
-            )}
             <span className="font-medium text-gray-900 dark:text-white truncate">
               {stop.name}
             </span>
@@ -85,8 +95,13 @@ const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscrip
               </>
             )}
             <span className="text-gray-400 shrink-0">•</span>
-            <span className="text-gray-500 dark:text-gray-400 truncate">{routeLabels.length} routes{termini && ` (${termini})`}</span>
+            <span className="text-gray-500 dark:text-gray-400 truncate">{routeLabels.length} routes</span>
           </div>
+          {termini && (
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
+              {termini}
+            </div>
+          )}
           {/* Route badges */}
           <div className="flex flex-wrap gap-1 mt-1">
             {routeLabels.slice(0, 8).map(({ shortName, mode }) => {
@@ -163,6 +178,8 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
   const subscribedStops = useSubscribedStopStore((state) => state.subscribedStops);
   const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
   const showStops = useSettingsStore((state) => state.showStops);
+  const userLocation = useLocationStore((state) => state.userLocation);
+  const lastKnownLocation = useLocationStore((state) => state.lastKnownLocation);
 
   // Subscribed stop IDs for fast lookup
   const subscribedIds = useMemo(
@@ -171,17 +188,30 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
   );
 
   // Enrich subscribed stops with distance and routes from nearby data when available
+  // Sort by distance to user (nearest first)
   const subscribedStopCards = useMemo(() => {
     const nearbyMap = new Map(stops.map((s) => [s.gtfsId, s]));
-    return subscribedStops.map((sub) => {
-      const nearby = nearbyMap.get(sub.gtfsId);
-      return {
-        ...sub,
-        routes: nearby?.routes ?? [],
-        distance: nearby?.distance,
-      } as Stop & { distance?: number };
-    });
-  }, [subscribedStops, stops]);
+    const location = userLocation ?? lastKnownLocation;
+
+    return subscribedStops
+      .map((sub) => {
+        const nearby = nearbyMap.get(sub.gtfsId);
+        const distance = nearby?.distance
+          ?? (location ? haversineDistance(location.latitude, location.longitude, sub.lat, sub.lon) : undefined);
+        return {
+          ...sub,
+          routes: nearby?.routes ?? [],
+          headsigns: nearby?.headsigns,
+          distance,
+        } as Stop & { distance?: number };
+      })
+      .sort((a, b) => {
+        if (a.distance == null && b.distance == null) return 0;
+        if (a.distance == null) return 1;
+        if (b.distance == null) return -1;
+        return a.distance - b.distance;
+      });
+  }, [subscribedStops, stops, userLocation, lastKnownLocation]);
 
   // Nearby stops excluding subscribed ones
   const nearbyOnly = useMemo(

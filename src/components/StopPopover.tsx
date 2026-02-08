@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import type { Stop, Route } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useSubscribedStopStore } from '@/stores';
+import { getStopTermini } from '@/lib';
 
 interface StopPopoverProps {
   stop: Stop;
@@ -31,6 +32,8 @@ const StopPopoverComponent = ({ stop, onClose, onRouteActivate }: StopPopoverPro
     });
   }, [stop.routes]);
 
+  const termini = getStopTermini(stop.routes, stop.headsigns);
+
   const handleToggleSubscription = () => {
     if (saved) {
       unsubscribeFromStop(stop.gtfsId);
@@ -44,6 +47,7 @@ const StopPopoverComponent = ({ stop, onClose, onRouteActivate }: StopPopoverPro
       initial={{ opacity: 0, scale: 0.9, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 10 }}
+      onClick={(e) => e.stopPropagation()}
       className="relative z-50 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 min-w-[180px] sm:min-w-[220px] max-w-[300px] sm:max-w-[500px] pointer-events-auto mb-3 sm:mb-4"
     >
       {/* Arrow pointing down */}
@@ -71,6 +75,11 @@ const StopPopoverComponent = ({ stop, onClose, onRouteActivate }: StopPopoverPro
           <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 capitalize">
             {stop.vehicleMode} stop • {routeLabels.length} routes
           </div>
+          {termini && (
+            <div className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 truncate" title={termini}>
+              {termini}
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}

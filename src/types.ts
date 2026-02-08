@@ -134,6 +134,8 @@ export interface Stop {
   lon: number;
   vehicleMode: TransportMode;
   routes: StopRoute[];
+  /** Direction-specific headsigns from patterns serving this stop */
+  headsigns?: string[];
 }
 
 // Upcoming departure at a stop (from Digitransit stoptimes API)

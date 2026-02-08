@@ -2,10 +2,9 @@ import { memo, useMemo, useEffect } from 'react';
 import type { Stop, StopDeparture } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useStopStore, useSubscribedStopStore, useVehicleStore } from '@/stores';
-import { useStopTimetable } from '@/lib';
+import { useStopTimetable, getStopTermini } from '@/lib';
 import { DELAY_LATE_THRESHOLD, DELAY_EARLY_THRESHOLD } from '@/constants';
 import { StarToggleButton } from './StarToggleButton';
-import { getStopTermini } from '@/lib';
 
 interface StopDetailsProps {
   stop: Stop;
@@ -116,7 +115,24 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onVehicleDeselec
   }, [timetable?.directions, setStopDirections]);
 
   const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
-  const termini = useMemo(() => getStopTermini(stop.routes), [stop.routes]);
+
+  // Extract termini — prefer API headsigns, fall back to departure headsigns, then route longNames
+  const termini = useMemo(() => {
+    // First try API-provided headsigns (direction-specific from patterns)
+    if (stop.headsigns?.length) {
+      return stop.headsigns.join(', ');
+    }
+    // Then try departure headsigns from timetable
+    if (timetable?.departures.length) {
+      const headsigns = new Set<string>();
+      for (const d of timetable.departures) {
+        if (d.headsign) headsigns.add(d.headsign);
+      }
+      if (headsigns.size > 0) return Array.from(headsigns).join(', ');
+    }
+    // Fall back to route longNames
+    return getStopTermini(stop.routes);
+  }, [stop.headsigns, stop.routes, timetable?.departures]);
 
   // Build set of vehicle trip keys currently on the map for graying out departures
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
@@ -165,15 +181,26 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onVehicleDeselec
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-gray-900 dark:text-white truncate">
-              {stop.name}
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 dark:text-white truncate">
+                {stop.name}
+              </span>
+              {stop.code && (
+                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                  {stop.code}
+                </span>
+              )}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 flex min-w-0">
-              {stop.code && <span className="shrink-0">{stop.code} • </span>}
-              <span className="capitalize shrink-0">{stop.vehicleMode}</span>
-              <span className="text-gray-400 shrink-0"> • </span>
-              <span className="truncate">{stop.routes.length} routes{termini && ` (${termini})`}</span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-gray-500 dark:text-gray-400 capitalize shrink-0">{stop.vehicleMode}</span>
+              <span className="text-gray-400 shrink-0">•</span>
+              <span className="text-gray-500 dark:text-gray-400 truncate">{stop.routes.length} routes</span>
             </div>
+            {termini && (
+              <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
+                {termini}
+              </div>
+            )}
           </div>
         </div>
 

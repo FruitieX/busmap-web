@@ -499,7 +499,6 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                     const stopSubscribed = isStopSubscribed(stop.gtfsId);
                     const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
                     const isSelected = combinedIndex === selectedIndex;
-                    const termini = getStopTermini(stop.routes);
                     return (
                       <div
                         key={stop.gtfsId}
@@ -529,8 +528,16 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                             )}
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 capitalize truncate">
-                            {stop.vehicleMode} • {stop.routes.length} routes{termini && ` (${termini})`}
+                            {stop.vehicleMode} • {stop.routes.length} routes
                           </div>
+                          {(() => {
+                            const termini = getStopTermini(stop.routes, stop.headsigns);
+                            return termini ? (
+                              <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
+                                {termini}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                         <StarToggleButton
                           active={stopSubscribed}

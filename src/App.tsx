@@ -138,9 +138,6 @@ const App = () => {
   // Stops store
   const { selectedStop, selectedStopRouteIds, selectStop, clearSelectedStop } = useStopStore();
 
-  // Track the stop the user came from when activating a route from StopPopover
-  const previousStopRef = useRef<Stop | null>(null);
-
   // Temporary MQTT subscriptions for activated (not permanently subscribed) routes
   const tempMqttRouteIds = useRef(new Set<string>());
 
@@ -290,10 +287,6 @@ const App = () => {
   // Handle route activation (select without subscribing) - for nearby routes and search
   const handleActivateRoute = useCallback(
     (route: Route) => {
-      // Save the current stop so we can navigate back from route popover
-      const currentStop = useStopStore.getState().selectedStop;
-      previousStopRef.current = currentStop;
-
       setSelectedVehicleId(null);
       clearSelectedStop();
       cleanupTempSubscriptions();
@@ -313,13 +306,31 @@ const App = () => {
     [clearSelectedStop, cleanupTempSubscriptions],
   );
 
+  // Handle route activation from StopPopover — keeps the stop selected so StopDetails stays visible
+  const handleActivateRouteFromStop = useCallback(
+    (route: Route) => {
+      setSelectedVehicleId(null);
+      // Don't clear stop or temp subscriptions — keep stop context in bottom sheet
+
+      const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
+      if (!permanentIds.has(route.gtfsId)) {
+        tempMqttRouteIds.current.add(route.gtfsId);
+        mqttService.subscribeToRoute(route.gtfsId);
+        mqttService.addActiveRoute(route.gtfsId);
+      }
+
+      setSelectedRouteId(route.gtfsId);
+      setActivatedRoute(route);
+    },
+    [],
+  );
+
   // Helper to clear route selection state and clean up temp subscriptions
   const clearRouteSelection = useCallback((routeId: string | null) => {
     setSelectedRouteId(routeId);
     if (!routeId) {
       setActivatedRoute(null);
       cleanupTempSubscriptions();
-      previousStopRef.current = null;
     }
   }, [cleanupTempSubscriptions]);
 
@@ -415,11 +426,27 @@ const App = () => {
 
   // Navigate back to the stop the user came from when they activated a route from StopPopover
   const handleBackToStop = useCallback(() => {
-    const stop = previousStopRef.current;
-    if (!stop) return;
-    previousStopRef.current = null;
-    handleStopClick(stop);
-  }, [handleStopClick]);
+    // Clear route selection but keep the stop selected
+    setSelectedRouteId(null);
+    setActivatedRoute(null);
+    cleanupTempSubscriptions();
+
+    // Fly back to the stop and re-subscribe to its routes for MQTT vehicles
+    const stop = useStopStore.getState().selectedStop;
+    if (stop) {
+      const { flyToLocation } = useLocationStore.getState();
+      flyToLocation(stop.lat, stop.lon, 14);
+
+      const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
+      for (const route of stop.routes) {
+        if (!permanentIds.has(route.gtfsId)) {
+          tempMqttRouteIds.current.add(route.gtfsId);
+          mqttService.subscribeToRoute(route.gtfsId);
+          mqttService.addActiveRoute(route.gtfsId);
+        }
+      }
+    }
+  }, [cleanupTempSubscriptions]);
 
   // Handle back from stop details
   const handleStopBack = useCallback(() => {
@@ -591,8 +618,8 @@ const App = () => {
         onStopClick={handleStopClick}
         onStopDeselect={handleStopBack}
         onVehicleDeselect={handleVehicleDeselect}
-        onRouteActivate={handleActivateRoute}
-        onBackToStop={previousStopRef.current ? handleBackToStop : undefined}
+        onRouteActivate={handleActivateRouteFromStop}
+        onBackToStop={selectedStop ? handleBackToStop : undefined}
         nearbyRouteIds={nearbyRouteIds}
       />
 

@@ -97,9 +97,6 @@ const VehicleCard = memo(
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              {isSubscribed && (
-                <span className="shrink-0 w-2 h-2 rounded-full bg-primary-500" title="Tracked" />
-              )}
               <span className="font-medium text-gray-900 dark:text-white truncate">
                 {vehicle.headsign || 'Unknown destination'}
               </span>
