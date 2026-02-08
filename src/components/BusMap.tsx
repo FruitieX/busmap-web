@@ -99,10 +99,12 @@ interface BusMapProps {
   selectedVehicleId?: string | null;
   onVehicleSelect?: (vehicleId: string | null) => void;
   selectedRouteId?: string | null;
+  activatedRoute?: Route | null;
   onRouteSelect?: (routeId: string | null) => void;
   bottomPadding?: number; // in pixels, for bottom sheet
   nearbyStops?: Array<Stop & { distance: number }>;
   onStopClick?: (stop: Stop) => void;
+  onStopDeselect?: () => void;
   nearbyRouteIds?: string[];
 }
 
@@ -263,7 +265,7 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
 });
 SelectedVehiclePopover.displayName = 'SelectedVehiclePopover';
 
-const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, nearbyRouteIds }: BusMapProps) => {
+const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe, nearbyRadius, selectedVehicleId, onVehicleSelect, selectedRouteId, activatedRoute, onRouteSelect, bottomPadding = 200, nearbyStops, onStopClick, onStopDeselect, nearbyRouteIds }: BusMapProps) => {
   const mapRef = useRef<MapRef>(null);
   const { viewport, setViewport, pendingFlyTo, consumePendingFlyTo } = useLocationStore();
   const userLocation = useLocationStore((state) => state.userLocation);
@@ -279,7 +281,6 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const selectedStop = useStopStore((state) => state.selectedStop);
   const selectedStopRouteIds = useStopStore((state) => state.selectedStopRouteIds);
   const selectedStopDirections = useStopStore((state) => state.selectedStopDirections);
-  const clearSelectedStop = useStopStore((state) => state.clearSelectedStop);
 
   // Subscribed stops (always shown on map)
   const subscribedStops = useSubscribedStopStore((state) => state.subscribedStops);
@@ -742,8 +743,12 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         mode: vehicle.mode,
       };
     }
+    // Fall back to activated route from search/list
+    if (activatedRoute && activatedRoute.gtfsId === selectedRouteId) {
+      return activatedRoute;
+    }
     return null;
-  }, [selectedRouteId, subscribedRoutes, nearbyStops, vehicles]);
+  }, [selectedRouteId, subscribedRoutes, nearbyStops, vehicles, activatedRoute]);
 
   const isSelectedRouteSubscribed = useMemo(
     () => selectedRouteId ? subscribedRoutes.some((r) => r.gtfsId === selectedRouteId) : false,
@@ -858,9 +863,11 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       } else if (selectedStopRouteIds.size > 0) {
         opacity = selectedStopRouteIds.has(routeId) ? 1 : 0.1;
       }
-      // Resolve color from nearby stops or selected stop route info
+      // Resolve color from nearby stops, activated route, or default
       let color = TRANSPORT_COLORS.bus;
-      if (nearbyStops) {
+      if (activatedRoute && routeId === activatedRoute.gtfsId && activatedRoute.mode) {
+        color = TRANSPORT_COLORS[activatedRoute.mode] ?? TRANSPORT_COLORS.bus;
+      } else if (nearbyStops) {
         for (const stop of nearbyStops) {
           const sr = stop.routes.find((r) => r.gtfsId === routeId);
           if (sr) {
@@ -890,7 +897,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     }
 
     return { type: 'FeatureCollection', features };
-  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId, selectedStopRouteIds, nearbyStops, nearbyRouteIds]);
+  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId, selectedStopRouteIds, nearbyStops, nearbyRouteIds, activatedRoute]);
 
   // Build GeoJSON for stop markers
   // Always show the selected stop and subscribed stops, even if showStops is off
@@ -1074,8 +1081,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const handleMapClick = useCallback(() => {
     onVehicleSelect?.(null);
     onRouteSelect?.(null);
-    clearSelectedStop();
-  }, [onVehicleSelect, onRouteSelect, clearSelectedStop]);
+    if (selectedStop) onStopDeselect?.();
+  }, [onVehicleSelect, onRouteSelect, onStopDeselect, selectedStop]);
 
   // Handle click on stop WebGL layer
   const handleStopLayerClick = useCallback(
@@ -1302,7 +1309,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           >
             <StopPopover
               stop={selectedStop}
-              onClose={clearSelectedStop}
+              onClose={() => onStopDeselect?.()}
             />
           </Marker>
         )}

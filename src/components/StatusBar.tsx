@@ -258,17 +258,17 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
         if (searchMode === 'stops' && filteredStops.length > 0) {
           const selectedStop = filteredStops[selectedIndex];
           if (selectedStop) {
-            handleStopSelect(selectedStop);
+            handleStopSubscriptionToggle(selectedStop);
           }
         } else if (searchResults.length > 0) {
           const selectedRoute = searchResults[selectedIndex];
           if (selectedRoute) {
-            handleSelectRoute(selectedRoute);
+            handleRouteSubscriptionToggle(selectedRoute);
           }
         }
       }
     },
-    [searchMode, searchResults, filteredStops, selectedIndex, handleSelectRoute],
+    [searchMode, searchResults, filteredStops, selectedIndex, handleRouteSubscriptionToggle, handleStopSubscriptionToggle],
   );
 
   // Scroll selected item into view
@@ -457,9 +457,11 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                       const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
                       const isSelected = index === selectedIndex;
                       return (
-                        <button
+                        <div
                           key={stop.gtfsId}
-                          className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 ${
+                          role="button"
+                          tabIndex={0}
+                          className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 cursor-pointer ${
                             isSelected
                               ? 'bg-gray-100 dark:bg-gray-800'
                               : 'hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -508,7 +510,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                               </svg>
                             )}
                           </button>
-                        </button>
+                        </div>
                       );
                     })
                   ) : (
@@ -524,9 +526,11 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                     const color = TRANSPORT_COLORS[route.mode || 'bus'];
                     const isSelected = index === selectedIndex;
                     return (
-                      <button
+                      <div
                         key={route.gtfsId}
-                        className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 ${
+                        role="button"
+                        tabIndex={0}
+                        className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 cursor-pointer ${
                           isSelected
                             ? 'bg-gray-100 dark:bg-gray-800'
                             : 'hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -570,7 +574,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                             </svg>
                           )}
                         </button>
-                      </button>
+                      </div>
                     );
                   })
                 ) : (

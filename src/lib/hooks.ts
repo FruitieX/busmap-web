@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { fetchAllRoutes, fetchRoutePatterns, fetchNearbyStops, fetchStopTimetable, getCachedRoutes, setCachedRoutes, isApiKeyConfigured } from './api';
 import type { StopTimetableResult } from './api';
 import type { Route, RoutePattern, Stop } from '@/types';
@@ -44,6 +44,7 @@ export const useNearbyStops = (lat: number | null, lon: number | null, radius: n
     gcTime: 1000 * 60 * 30, // 30 minutes
     enabled: lat !== null && lon !== null && radius > 0 && isApiKeyConfigured(),
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData, // keep showing old stops while refetching
   });
 };
 

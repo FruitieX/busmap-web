@@ -82,6 +82,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState<SheetTab>(loadSavedTab);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [activatedRoute, setActivatedRoute] = useState<Route | null>(null);
   const [sheetHeight, setSheetHeight] = useState(() => useSettingsStore.getState().sheetHeight);
   const setPersistedSheetHeight = useSettingsStore((state) => state.setSheetHeight);
   const sheetPersistTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
@@ -158,10 +159,27 @@ const App = () => {
     [effectiveLocation?.latitude, effectiveLocation?.longitude]
   );
 
+  // Stable coordinates for nearby stops query — only updates when the user
+  // moves more than ~150m from the last query position, avoiding both constant
+  // GPS jitter and the rounding-boundary oscillation problem.
+  const stableCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const STABLE_THRESHOLD_DEG = 0.0015; // ~150m
+  const stableCoords = useMemo(() => {
+    if (!userCoords) return null;
+    const prev = stableCoordsRef.current;
+    if (prev && Math.abs(userCoords.lat - prev.lat) < STABLE_THRESHOLD_DEG
+            && Math.abs(userCoords.lng - prev.lng) < STABLE_THRESHOLD_DEG) {
+      return prev; // same reference — no query key change
+    }
+    const next = { lat: userCoords.lat, lng: userCoords.lng };
+    stableCoordsRef.current = next;
+    return next;
+  }, [userCoords?.lat, userCoords?.lng]);
+
   // Nearby stops query - fetch 100 nearest stops (large radius so `first: 100` is the actual limit)
   const { data: allNearbyStops, isLoading: stopsLoading } = useNearbyStops(
-    userCoords?.lat ?? null,
-    userCoords?.lng ?? null,
+    stableCoords?.lat ?? null,
+    stableCoords?.lng ?? null,
     4000,
   );
 
@@ -280,9 +298,19 @@ const App = () => {
       }
 
       setSelectedRouteId(route.gtfsId);
+      setActivatedRoute(route);
     },
     [clearSelectedStop, cleanupTempSubscriptions],
   );
+
+  // Helper to clear route selection state and clean up temp subscriptions
+  const clearRouteSelection = useCallback((routeId: string | null) => {
+    setSelectedRouteId(routeId);
+    if (!routeId) {
+      setActivatedRoute(null);
+      cleanupTempSubscriptions();
+    }
+  }, [cleanupTempSubscriptions]);
 
   // Handle subscribe from vehicle card or popover
   const handleSubscribeFromVehicle = useCallback(
@@ -324,7 +352,7 @@ const App = () => {
     try {
       // Close any open popovers
       setSelectedVehicleId(null);
-      setSelectedRouteId(null);
+      clearRouteSelection(null);
       clearSelectedStop();
       cleanupTempSubscriptions();
       await requestUserLocation();
@@ -339,7 +367,7 @@ const App = () => {
     (stop: Stop) => {
       // Clear other selections
       setSelectedVehicleId(null);
-      setSelectedRouteId(null);
+      clearRouteSelection(null);
       cleanupTempSubscriptions();
 
       // Toggle stop selection
@@ -403,7 +431,7 @@ const App = () => {
 
       if (bestMatch) {
         setSelectedVehicleId(bestMatch.vehicleId);
-        setSelectedRouteId(null);
+        clearRouteSelection(null);
         // Keep the stop active - don't clear it
         const { flyToLocation } = useLocationStore.getState();
         flyToLocation(bestMatch.lat, bestMatch.lng, VEHICLE_FLY_TO_ZOOM);
@@ -501,10 +529,12 @@ const App = () => {
         selectedVehicleId={selectedVehicleId}
         onVehicleSelect={setSelectedVehicleId}
         selectedRouteId={selectedRouteId}
-        onRouteSelect={setSelectedRouteId}
+        activatedRoute={activatedRoute}
+        onRouteSelect={clearRouteSelection}
         bottomPadding={sheetHeight}
         nearbyStops={nearbyStops}
         onStopClick={handleStopClick}
+        onStopDeselect={handleStopBack}
         nearbyRouteIds={nearbyRouteIds}
       />
 
@@ -620,7 +650,7 @@ const App = () => {
             <VehicleList
               selectedVehicleId={selectedVehicleId}
               onVehicleClick={(v) => {
-                setSelectedRouteId(null);
+                clearRouteSelection(null);
                 clearSelectedStop();
                 cleanupTempSubscriptions();
                 setSelectedVehicleId(v.vehicleId);
@@ -639,6 +669,7 @@ const App = () => {
                   clearSelectedStop();
                   cleanupTempSubscriptions();
                   setSelectedRouteId(route.gtfsId);
+                  setActivatedRoute(route);
                 }}
                 selectedRouteId={selectedRouteId}
                 hasNearbyRoutes={nearbyRoutes.length > 0}
