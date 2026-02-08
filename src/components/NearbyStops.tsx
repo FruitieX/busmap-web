@@ -1,7 +1,9 @@
 import { memo, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
-import { useStopStore } from '@/stores';
+import { useStopStore, useSubscribedStopStore, useSettingsStore } from '@/stores';
+import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { KM_IN_METERS } from '@/constants';
 
 interface NearbyStopsProps {
@@ -16,12 +18,14 @@ const formatDistance = (meters: number): string => {
 };
 
 interface StopCardProps {
-  stop: Stop & { distance: number };
+  stop: Stop & { distance?: number };
   isSelected: boolean;
+  isSubscribed: boolean;
   onCardClick: () => void;
+  onSubscriptionToggle: () => void;
 }
 
-const StopCard = memo(({ stop, isSelected, onCardClick }: StopCardProps) => {
+const StopCard = memo(({ stop, isSelected, isSubscribed, onCardClick, onSubscriptionToggle }: StopCardProps) => {
   const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
 
   // Group routes by mode, sorted
@@ -57,6 +61,9 @@ const StopCard = memo(({ stop, isSelected, onCardClick }: StopCardProps) => {
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            {isSubscribed && (
+              <span className="shrink-0 w-2 h-2 rounded-full bg-primary-500" title="Saved" />
+            )}
             <span className="font-medium text-gray-900 dark:text-white truncate">
               {stop.name}
             </span>
@@ -68,8 +75,12 @@ const StopCard = memo(({ stop, isSelected, onCardClick }: StopCardProps) => {
           </div>
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-gray-500 dark:text-gray-400 capitalize">{stop.vehicleMode}</span>
-            <span className="text-gray-400">•</span>
-            <span className="text-gray-500 dark:text-gray-400">{formatDistance(stop.distance)}</span>
+            {stop.distance !== undefined && (
+              <>
+                <span className="text-gray-400">•</span>
+                <span className="text-gray-500 dark:text-gray-400">{formatDistance(stop.distance)}</span>
+              </>
+            )}
             <span className="text-gray-400">•</span>
             <span className="text-gray-500 dark:text-gray-400">{routeLabels.length} routes</span>
           </div>
@@ -91,6 +102,27 @@ const StopCard = memo(({ stop, isSelected, onCardClick }: StopCardProps) => {
             )}
           </div>
         </div>
+
+        {/* Subscribe/unsubscribe button */}
+        {isSubscribed ? (
+          <ConfirmDeleteButton
+            onConfirm={onSubscriptionToggle}
+            title="Remove stop"
+          />
+        ) : (
+          <button
+            className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSubscriptionToggle();
+            }}
+            title="Save this stop"
+          >
+            <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -136,6 +168,42 @@ const StopIcon = ({ mode }: { mode: string }) => {
 
 const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProps) => {
   const selectedStop = useStopStore((state) => state.selectedStop);
+  const subscribedStops = useSubscribedStopStore((state) => state.subscribedStops);
+  const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
+  const showStops = useSettingsStore((state) => state.showStops);
+
+  // Subscribed stop IDs for fast lookup
+  const subscribedIds = useMemo(
+    () => new Set(subscribedStops.map((s) => s.gtfsId)),
+    [subscribedStops],
+  );
+
+  // Enrich subscribed stops with distance and routes from nearby data when available
+  const subscribedStopCards = useMemo(() => {
+    const nearbyMap = new Map(stops.map((s) => [s.gtfsId, s]));
+    return subscribedStops.map((sub) => {
+      const nearby = nearbyMap.get(sub.gtfsId);
+      return {
+        ...sub,
+        routes: nearby?.routes ?? [],
+        distance: nearby?.distance,
+      } as Stop & { distance?: number };
+    });
+  }, [subscribedStops, stops]);
+
+  // Nearby stops excluding subscribed ones
+  const nearbyOnly = useMemo(
+    () => stops.filter((s) => !subscribedIds.has(s.gtfsId)),
+    [stops, subscribedIds],
+  );
+
+  const handleSubscriptionToggle = (stop: Stop) => {
+    if (isStopSubscribed(stop.gtfsId)) {
+      unsubscribeFromStop(stop.gtfsId);
+    } else {
+      subscribeToStop(stop);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -146,7 +214,7 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
     );
   }
 
-  if (stops.length === 0) {
+  if (subscribedStops.length === 0 && (!showStops || stops.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -160,9 +228,9 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">No nearby stops</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[200px]">
-          Enable location access to find stops near you
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">No stops</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[220px]">
+          Search for stops to save them, or enable nearby mode to discover stops near you
         </p>
       </div>
     );
@@ -170,14 +238,45 @@ const NearbyStopsComponent = ({ stops, isLoading, onStopClick }: NearbyStopsProp
 
   return (
     <div className="space-y-2 px-0.5">
-      {stops.map((stop) => (
-        <StopCard
-          key={stop.gtfsId}
-          stop={stop}
-          isSelected={selectedStop?.gtfsId === stop.gtfsId}
-          onCardClick={() => onStopClick(stop)}
-        />
-      ))}
+      {/* Subscribed stops always shown */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        {subscribedStopCards.map((stop) => (
+          <motion.div
+            key={stop.gtfsId}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, x: -100 }}
+            transition={{ opacity: { duration: 0.15 }, scale: { duration: 0.15 } }}
+          >
+            <StopCard
+              stop={stop}
+              isSelected={selectedStop?.gtfsId === stop.gtfsId}
+              isSubscribed={true}
+              onCardClick={() => onStopClick(stop)}
+              onSubscriptionToggle={() => handleSubscriptionToggle(stop)}
+            />
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {/* Nearby stops section - only when showStops is enabled */}
+      {showStops && nearbyOnly.length > 0 && (
+        <div className={subscribedStops.length > 0 ? 'pt-2' : ''}>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Nearby Stops</h3>
+          <div className="space-y-2">
+            {nearbyOnly.map((stop) => (
+              <StopCard
+                key={stop.gtfsId}
+                stop={stop}
+                isSelected={selectedStop?.gtfsId === stop.gtfsId}
+                isSubscribed={false}
+                onCardClick={() => onStopClick(stop)}
+                onSubscriptionToggle={() => handleSubscriptionToggle(stop)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

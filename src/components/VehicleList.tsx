@@ -2,6 +2,7 @@ import { memo, useMemo, useCallback } from 'react';
 import type { TrackedVehicle } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useVehicleStore, useSubscriptionStore, useLocationStore } from '@/stores';
+import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import {
   EARTH_RADIUS_M,
   MPS_TO_KMPH,
@@ -117,37 +118,25 @@ const VehicleCard = memo(
           </div>
 
           {/* Subscribe/unsubscribe button */}
-          <button
-            className={`group shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full flex items-center justify-center transition-colors ${
-              isSubscribed
-                ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSubscriptionToggle();
-            }}
-            title={isSubscribed ? 'Stop tracking' : 'Track this route'}
-          >
-            {isSubscribed ? (
-              <>
-                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 group-hover:hidden" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 hidden group-hover:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </>
-            ) : (
+          {isSubscribed ? (
+            <ConfirmDeleteButton
+              onConfirm={onSubscriptionToggle}
+              title="Stop tracking"
+            />
+          ) : (
+            <button
+              className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full flex items-center justify-center transition-colors bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSubscriptionToggle();
+              }}
+              title="Track this route"
+            >
               <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-            )}
-          </button>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -214,6 +203,16 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
     [onSubscribe, onUnsubscribe]
   );
 
+  // Split vehicles into subscribed and nearby sections
+  const subscribedVehicles = useMemo(
+    () => sortedVehicles.filter((v) => v.isSubscribed),
+    [sortedVehicles],
+  );
+  const nearbyVehicles = useMemo(
+    () => sortedVehicles.filter((v) => !v.isSubscribed),
+    [sortedVehicles],
+  );
+
   if (sortedVehicles.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -228,8 +227,8 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
           </svg>
         </div>
         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">No vehicles</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[200px]">
-          Add routes to track vehicles in real-time
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[220px]">
+          Search for routes to track their vehicles, or enable nearby mode to discover vehicles near you
         </p>
       </div>
     );
@@ -237,7 +236,7 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
 
   return (
     <div className="space-y-2 px-0.5">
-      {sortedVehicles.map(({ vehicle, distance, isSubscribed }) => (
+      {subscribedVehicles.map(({ vehicle, distance, isSubscribed }) => (
         <VehicleCard
           key={vehicle.vehicleId}
           vehicle={vehicle}
@@ -248,6 +247,24 @@ const VehicleListComponent = ({ selectedVehicleId, onVehicleClick, onSubscribe, 
           onSubscriptionToggle={() => handleSubscriptionToggle(vehicle, isSubscribed)}
         />
       ))}
+      {nearbyVehicles.length > 0 && (
+        <div className={subscribedVehicles.length > 0 ? 'pt-2' : ''}>
+          <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Nearby Vehicles</h3>
+          <div className="space-y-2">
+            {nearbyVehicles.map(({ vehicle, distance, isSubscribed }) => (
+              <VehicleCard
+                key={vehicle.vehicleId}
+                vehicle={vehicle}
+                distance={distance}
+                isSubscribed={isSubscribed}
+                isSelected={selectedVehicleId === vehicle.vehicleId}
+                onCardClick={() => handleCardClick(vehicle)}
+                onSubscriptionToggle={() => handleSubscriptionToggle(vehicle, isSubscribed)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

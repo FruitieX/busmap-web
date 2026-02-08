@@ -1,13 +1,18 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useVehicleStore, useSubscriptionStore, useSettingsStore } from '@/stores';
+import { useVehicleStore, useSubscriptionStore, useSettingsStore, useSubscribedStopStore } from '@/stores';
 import { useRoutes } from '@/lib';
-import type { Route, TransportMode } from '@/types';
+import type { Route, TransportMode, Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 
 interface StatusBarProps {
-  onSelectRoute?: (route: Route) => void;
+  onActivateRoute?: (route: Route) => void;
+  onToggleRouteSubscription?: (route: Route) => void;
+  nearbyStops?: Array<Stop & { distance: number }>;
+  onStopClick?: (stop: Stop) => void;
 }
+
+type SearchMode = 'routes' | 'stops';
 
 const MODE_ORDER: TransportMode[] = ['bus', 'tram', 'metro', 'train', 'ferry'];
 const MODE_LABELS: Record<TransportMode, string> = {
@@ -20,17 +25,19 @@ const MODE_LABELS: Record<TransportMode, string> = {
   robot: 'Robot',
 };
 
-const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
+const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearbyStops, onStopClick }: StatusBarProps) => {
   const connectionStatus = useVehicleStore((state) => state.connectionStatus);
   const vehicleCount = useVehicleStore((state) => state.vehicles.size);
   const subscribedCount = useSubscriptionStore((state) => state.subscribedRoutes.length);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const showNearby = useSettingsStore((state) => state.showNearby);
+  const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
 
   const [isSearching, setIsSearching] = useState(false);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<Route[]>([]);
   const [selectedMode, setSelectedMode] = useState<TransportMode | 'all'>('all');
+  const [searchMode, setSearchMode] = useState<SearchMode>('routes');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -43,6 +50,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
     setIsSearching(false);
     setSearch('');
     setSelectedMode('all');
+    setSearchMode('routes');
     setSelectedIndex(0);
   }, []);
 
@@ -105,6 +113,11 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
 
   // Filter routes based on search and mode, prioritize exact matches
   useEffect(() => {
+    if (searchMode === 'stops') {
+      setSearchResults([]);
+      return;
+    }
+
     if (!routes) {
       setSearchResults([]);
       return;
@@ -160,6 +173,36 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
     return MODE_ORDER.filter((m) => modes.has(m));
   }, [routes]);
 
+  // Filtered stops for stop search mode
+  const filteredStops = useMemo(() => {
+    if (searchMode !== 'stops' || !nearbyStops) return [];
+    if (!search.trim()) return nearbyStops.slice(0, 50);
+
+    const searchLower = search.toLowerCase().trim();
+    const matched = nearbyStops.filter(
+      (s) =>
+        s.name.toLowerCase().includes(searchLower) ||
+        s.code.toLowerCase().includes(searchLower),
+    );
+
+    // Sort: exact name matches first, then starts-with, then contains
+    return matched
+      .sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === searchLower;
+        const bExact = bName === searchLower;
+        if (aExact && !bExact) return -1;
+        if (bExact && !aExact) return 1;
+        const aStarts = aName.startsWith(searchLower);
+        const bStarts = bName.startsWith(searchLower);
+        if (aStarts && !bStarts) return -1;
+        if (bStarts && !aStarts) return 1;
+        return a.distance - b.distance;
+      })
+      .slice(0, 50);
+  }, [searchMode, nearbyStops, search]);
+
   const handleSearchClick = useCallback(() => {
     setIsSearching(true);
   }, []);
@@ -167,31 +210,65 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
 
   const handleSelectRoute = useCallback(
     (route: Route) => {
-      onSelectRoute?.(route);
+      onActivateRoute?.(route);
       closeSearch();
     },
-    [onSelectRoute, closeSearch]
+    [onActivateRoute, closeSearch]
+  );
+
+  const handleRouteSubscriptionToggle = useCallback(
+    (route: Route) => {
+      onToggleRouteSubscription?.(route);
+    },
+    [onToggleRouteSubscription],
+  );
+
+  const handleStopSelect = useCallback(
+    (stop: Stop) => {
+      onStopClick?.(stop);
+      closeSearch();
+    },
+    [onStopClick, closeSearch],
+  );
+
+  const handleStopSubscriptionToggle = useCallback(
+    (stop: Stop) => {
+      if (isStopSubscribed(stop.gtfsId)) {
+        unsubscribeFromStop(stop.gtfsId);
+      } else {
+        subscribeToStop(stop);
+      }
+    },
+    [subscribeToStop, unsubscribeFromStop, isStopSubscribed],
   );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const maxIndex = searchMode === 'stops' ? filteredStops.length - 1 : searchResults.length - 1;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         keyboardNavRef.current = true;
-        setSelectedIndex((prev) => Math.min(prev + 1, searchResults.length - 1));
+        setSelectedIndex((prev) => Math.min(prev + 1, maxIndex));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         keyboardNavRef.current = true;
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'Enter' && searchResults.length > 0) {
+      } else if (e.key === 'Enter') {
         e.preventDefault();
-        const selectedRoute = searchResults[selectedIndex];
-        if (selectedRoute) {
-          handleSelectRoute(selectedRoute);
+        if (searchMode === 'stops' && filteredStops.length > 0) {
+          const selectedStop = filteredStops[selectedIndex];
+          if (selectedStop) {
+            handleStopSelect(selectedStop);
+          }
+        } else if (searchResults.length > 0) {
+          const selectedRoute = searchResults[selectedIndex];
+          if (selectedRoute) {
+            handleSelectRoute(selectedRoute);
+          }
         }
       }
     },
-    [searchResults, selectedIndex, handleSelectRoute]
+    [searchMode, searchResults, filteredStops, selectedIndex, handleSelectRoute],
   );
 
   // Scroll selected item into view
@@ -250,7 +327,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search routes..."
+                  placeholder={searchMode === 'stops' ? 'Search stops...' : 'Search routes...'}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -331,12 +408,12 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                 <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-thin pb-1">
                   <button
                     className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                      selectedMode === 'all'
+                      searchMode === 'routes' && selectedMode === 'all'
                         ? 'bg-primary-500 text-white'
                         : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                     }`}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setSelectedMode('all')}
+                    onClick={() => { setSearchMode('routes'); setSelectedMode('all'); setSelectedIndex(0); }}
                   >
                     All
                   </button>
@@ -344,22 +421,104 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                     <button
                       key={mode}
                       className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                        selectedMode === mode
+                        searchMode === 'routes' && selectedMode === mode
                           ? 'text-white'
                           : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                       }`}
-                      style={selectedMode === mode ? { backgroundColor: TRANSPORT_COLORS[mode] } : {}}
+                      style={searchMode === 'routes' && selectedMode === mode ? { backgroundColor: TRANSPORT_COLORS[mode] } : {}}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setSelectedMode(mode)}
+                      onClick={() => { setSearchMode('routes'); setSelectedMode(mode); setSelectedIndex(0); }}
                     >
                       {MODE_LABELS[mode]}
                     </button>
                   ))}
+                  {/* Stops filter - visually separated */}
+                  <div className="w-px bg-gray-300 dark:bg-gray-600 shrink-0 my-1" />
+                  <button
+                    className={`px-3.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                      searchMode === 'stops'
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setSearchMode('stops'); setSelectedMode('all'); setSelectedIndex(0); }}
+                  >
+                    Stops
+                  </button>
                 </div>
 
                 {/* Results */}
                 <div ref={resultsRef} className="max-h-[280px] overflow-y-auto overflow-x-hidden scrollbar-thin">
-                {searchResults.length > 0 ? (
+                {searchMode === 'stops' ? (
+                  /* Stop search results */
+                  filteredStops.length > 0 ? (
+                    filteredStops.map((stop, index) => {
+                      const stopSubscribed = isStopSubscribed(stop.gtfsId);
+                      const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
+                      const isSelected = index === selectedIndex;
+                      return (
+                        <button
+                          key={stop.gtfsId}
+                          className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 -mx-2 ${
+                            isSelected
+                              ? 'bg-gray-100 dark:bg-gray-800'
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                          }`}
+                          onClick={() => handleStopSelect(stop)}
+                          onMouseEnter={() => setSelectedIndex(index)}
+                        >
+                          <div
+                            className="w-10 h-8 rounded-md flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}` }}
+                          >
+                            <svg className="w-4 h-4" fill={color} viewBox="0 0 24 24">
+                              <path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 14 8 14s8-8.75 8-14c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 text-left min-w-0">
+                            <div className="text-sm text-gray-900 dark:text-white truncate">
+                              {stop.name}
+                              {stop.code && (
+                                <span className="text-xs text-gray-400 ml-1">{stop.code}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                              {stop.vehicleMode} • {stop.routes.length} routes
+                            </div>
+                          </div>
+                          <button
+                            className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                              stopSubscribed
+                                ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400'
+                                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStopSubscriptionToggle(stop);
+                            }}
+                            title={stopSubscribed ? 'Remove stop' : 'Save this stop'}
+                          >
+                            {stopSubscribed ? (
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                            )}
+                          </button>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+                      {search ? 'No stops found' : 'Type to search or browse nearby stops'}
+                    </div>
+                  )
+                ) : (
+                  /* Route search results */
+                  searchResults.length > 0 ? (
                   searchResults.map((route, index) => {
                     const subscribed = isSubscribed(route);
                     const color = TRANSPORT_COLORS[route.mode || 'bus'];
@@ -389,15 +548,28 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                             {route.longName}
                           </div>
                         </div>
-                        {subscribed && (
-                          <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
+                        <button
+                          className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                            subscribed
+                              ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400'
+                              : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRouteSubscriptionToggle(route);
+                          }}
+                          title={subscribed ? 'Remove route' : 'Track this route'}
+                        >
+                          {subscribed ? (
+                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                          )}
+                        </button>
                       </button>
                     );
                   })
@@ -405,6 +577,7 @@ const StatusBarComponent = ({ onSelectRoute }: StatusBarProps) => {
                   <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
                     {search ? 'No routes found' : 'Type to search or select a filter'}
                   </div>
+                )
                 )}
                 </div>
               </motion.div>

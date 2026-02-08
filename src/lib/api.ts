@@ -328,6 +328,9 @@ interface StopTimetableResponse {
       serviceDay: number;
       trip: {
         directionId: string;
+        departureStoptime: {
+          scheduledDeparture: number; // seconds from midnight at first stop
+        };
         route: {
           gtfsId: string;
           shortName: string;
@@ -352,6 +355,9 @@ export const fetchStopTimetable = async (stopId: string): Promise<StopTimetableR
         serviceDay
         trip {
           directionId
+          departureStoptime {
+            scheduledDeparture
+          }
           route {
             gtfsId
             shortName
@@ -388,6 +394,12 @@ export const fetchStopTimetable = async (stopId: string): Promise<StopTimetableR
       routeLongName: st.trip.route.longName,
       routeMode: normalizeMode(st.trip.route.mode, st.trip.route.gtfsId),
       directionId: gtfsDir,
+      tripStartTime: (() => {
+        const secs = st.trip.departureStoptime.scheduledDeparture;
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      })(),
     };
   });
 

@@ -251,6 +251,24 @@ class MqttService {
   private nearbyRadius: number = 0;
   // Track if we're paused (tab hidden)
   private isPaused: boolean = false;
+  // Actively selected route IDs (temp subscriptions) — vehicles on these routes
+  // should always pass through even when nearby mode is off
+  private activeRouteIds = new Set<string>();
+
+  /** Mark a route as actively selected (vehicles always pass through filters) */
+  addActiveRoute(routeId: string) {
+    this.activeRouteIds.add(routeId);
+  }
+
+  /** Remove a route from the active set */
+  removeActiveRoute(routeId: string) {
+    this.activeRouteIds.delete(routeId);
+  }
+
+  /** Clear all active route IDs */
+  clearActiveRoutes() {
+    this.activeRouteIds.clear();
+  }
   
   setNearbyFilter(center: { lat: number; lng: number } | null, radius: number) {
     this.nearbyCenter = center;
@@ -338,12 +356,15 @@ class MqttService {
         (r) => r.gtfsId === `HSL:${vp.route}` || r.shortName === vp.desi
       );
 
-      // For non-subscribed vehicles: only process if nearby mode is active
+      // For non-subscribed vehicles: check if route is actively selected, otherwise apply nearby filter
       if (!isSubscribed) {
-        // If nearby mode is off, skip all non-subscribed vehicles
-        if (!this.nearbyCenter) {
-          return;
-        }
+        const isActiveRoute = this.activeRouteIds.has(`HSL:${vp.route}`);
+
+        if (!isActiveRoute) {
+          // If nearby mode is off, skip non-active non-subscribed vehicles
+          if (!this.nearbyCenter) {
+            return;
+          }
 
         // Filter to only those within radius (circular)
         // If a nearby-only vehicle moves outside the radius, mark it for exit
@@ -360,6 +381,7 @@ class MqttService {
           }
           return; // Skip this update - outside nearby radius
         }
+        } // end !isActiveRoute
       }
 
       const vehicle: TrackedVehicle = {

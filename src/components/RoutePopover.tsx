@@ -1,14 +1,16 @@
 import { memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import type { SubscribedRoute, RoutePattern, TrackedVehicle } from '@/types';
+import type { SubscribedRoute, RoutePattern, TrackedVehicle, Route } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { EARTH_RADIUS_M, KM_IN_METERS } from '@/constants';
 
 interface RoutePopoverProps {
-  route: SubscribedRoute;
+  route: SubscribedRoute | Route;
+  isSubscribed: boolean;
   patterns?: RoutePattern[];
   vehicles: TrackedVehicle[];
   onClose: () => void;
+  onSubscribe: () => void;
   onUnsubscribe: () => void;
 }
 
@@ -42,8 +44,8 @@ const calculateRouteLength = (patterns: RoutePattern[]): number => {
   return maxLength;
 };
 
-const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscribe }: RoutePopoverProps) => {
-  const color = route.color || TRANSPORT_COLORS[route.mode] || TRANSPORT_COLORS.bus;
+const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe }: RoutePopoverProps) => {
+  const color = ('color' in route && route.color) || TRANSPORT_COLORS[route.mode ?? 'bus'] || TRANSPORT_COLORS.bus;
 
   const stats = useMemo(() => {
     const routeLength = patterns && patterns.length > 0 ? calculateRouteLength(patterns) : 0;
@@ -113,12 +115,17 @@ const RoutePopoverComponent = ({ route, patterns, vehicles, onClose, onUnsubscri
         </div>
       </div>
 
-      {/* Unsubscribe button */}
+      {/* Subscribe/Unsubscribe button */}
       <button
-        onClick={onUnsubscribe}
-        className="w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+        onClick={isSubscribed ? onUnsubscribe : onSubscribe}
+        className={`w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+          isSubscribed
+            ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            : 'text-white hover:opacity-90'
+        }`}
+        style={!isSubscribed ? { backgroundColor: color } : {}}
       >
-        Stop tracking route
+        {isSubscribed ? 'Stop tracking route' : 'Track this route'}
       </button>
     </motion.div>
   );

@@ -10,6 +10,7 @@ import {
   FloatingActionButton,
   SettingsPanel,
   UpdateToast,
+  ConfirmDeleteButton,
 } from '@/components';
 import {
   useSettingsStore,
@@ -95,6 +96,8 @@ const App = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [sheetHeight, setSheetHeight] = useState(SHEET_DEFAULT_HEIGHT);
+  const [nearbyMenuOpen, setNearbyMenuOpen] = useState(false);
+  const nearbyMenuRef = useRef<HTMLDivElement>(null);
   const expandSheetRef = useRef<(() => void) | null>(null);
 
   const switchTab = useCallback((tab: SheetTab) => {
@@ -133,12 +136,23 @@ const App = () => {
   const flyToUserLocation = useLocationStore((state) => state.flyToUserLocation);
   const setBottomPadding = useLocationStore((state) => state.setBottomPadding);
 
-  // Fetch route patterns for subscribed routes
-  const routeIds = useMemo(() => subscribedRoutes.map((r) => r.gtfsId), [subscribedRoutes]);
-  const { data: patterns } = useRoutePatterns(routeIds);
-
   // Stops store
-  const { selectedStop, selectStop, clearSelectedStop } = useStopStore();
+  const { selectedStop, selectedStopRouteIds, selectStop, clearSelectedStop } = useStopStore();
+
+  // Temporary MQTT subscriptions for activated (not permanently subscribed) routes
+  const tempMqttRouteIds = useRef(new Set<string>());
+
+  // Clean up temporary MQTT subscriptions that aren't permanently subscribed
+  const cleanupTempSubscriptions = useCallback(() => {
+    const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
+    for (const id of tempMqttRouteIds.current) {
+      if (!permanentIds.has(id)) {
+        mqttService.unsubscribeFromRoute(id);
+      }
+    }
+    tempMqttRouteIds.current.clear();
+    mqttService.clearActiveRoutes();
+  }, []);
 
   // Get user location for nearby mode and stops - only extract lat/lng to avoid spam from timestamp changes
   const userLocation = useLocationStore((state) => state.userLocation);
@@ -150,10 +164,16 @@ const App = () => {
   );
 
   // Nearby stops query - fetch 100 nearest stops (large radius so `first: 100` is the actual limit)
-  const { data: nearbyStops, isLoading: stopsLoading } = useNearbyStops(
+  const { data: allNearbyStops, isLoading: stopsLoading } = useNearbyStops(
     userCoords?.lat ?? null,
     userCoords?.lng ?? null,
     4000,
+  );
+
+  // Filter nearby stops by the user-configured radius
+  const nearbyStops = useMemo(
+    () => allNearbyStops?.filter((s) => s.distance <= nearbyRadius),
+    [allNearbyStops, nearbyRadius],
   );
 
   // Apply theme
@@ -242,9 +262,31 @@ const App = () => {
       } else {
         subscribeToRoute(route);
         mqttService.subscribeToRoute(route.gtfsId);
+        tempMqttRouteIds.current.delete(route.gtfsId);
       }
     },
     [subscribeToRoute, unsubscribeFromRoute]
+  );
+
+  // Handle route activation (select without subscribing) - for nearby routes and search
+  const handleActivateRoute = useCallback(
+    (route: Route) => {
+      setSelectedVehicleId(null);
+      clearSelectedStop();
+      cleanupTempSubscriptions();
+
+      // If already permanently subscribed, just select it
+      const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
+      if (!permanentIds.has(route.gtfsId)) {
+        // Temporarily subscribe to MQTT to see vehicles
+        tempMqttRouteIds.current.add(route.gtfsId);
+        mqttService.subscribeToRoute(route.gtfsId);
+        mqttService.addActiveRoute(route.gtfsId);
+      }
+
+      setSelectedRouteId(route.gtfsId);
+    },
+    [clearSelectedStop, cleanupTempSubscriptions],
   );
 
   // Handle subscribe from vehicle card or popover
@@ -267,6 +309,8 @@ const App = () => {
     (route: Route) => {
       subscribeToRoute(route);
       mqttService.subscribeToRoute(route.gtfsId);
+      // Remove from temp tracking since it's now permanent
+      tempMqttRouteIds.current.delete(route.gtfsId);
     },
     [subscribeToRoute]
   );
@@ -287,12 +331,13 @@ const App = () => {
       setSelectedVehicleId(null);
       setSelectedRouteId(null);
       clearSelectedStop();
+      cleanupTempSubscriptions();
       await requestUserLocation();
       flyToUserLocation();
     } catch (error) {
       console.error('Failed to get location:', error);
     }
-  }, [flyToUserLocation, clearSelectedStop]);
+  }, [flyToUserLocation, clearSelectedStop, cleanupTempSubscriptions]);
 
   // Handle zoom with animation
   const handleZoomIn = useCallback(() => {
@@ -311,6 +356,7 @@ const App = () => {
       // Clear other selections
       setSelectedVehicleId(null);
       setSelectedRouteId(null);
+      cleanupTempSubscriptions();
 
       // Toggle stop selection
       if (selectedStop?.gtfsId === stop.gtfsId) {
@@ -322,25 +368,25 @@ const App = () => {
         const { flyToLocation } = useLocationStore.getState();
         flyToLocation(stop.lat, stop.lon, 14);
 
-        // Subscribe to all routes that use this stop (so vehicles appear)
+        // Temporarily subscribe to MQTT for stop's routes (not persisted)
+        const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
         for (const route of stop.routes) {
-          const isAlreadySubscribed = useSubscriptionStore.getState().subscribedRoutes.some(
-            (r) => r.gtfsId === route.gtfsId,
-          );
-          if (!isAlreadySubscribed) {
-            subscribeToRoute(route);
+          if (!permanentIds.has(route.gtfsId)) {
+            tempMqttRouteIds.current.add(route.gtfsId);
             mqttService.subscribeToRoute(route.gtfsId);
+            mqttService.addActiveRoute(route.gtfsId);
           }
         }
       }
     },
-    [selectedStop, selectStop, clearSelectedStop, subscribeToRoute, switchTab],
+    [selectedStop, selectStop, clearSelectedStop, switchTab, cleanupTempSubscriptions],
   );
 
   // Handle back from stop details
   const handleStopBack = useCallback(() => {
+    cleanupTempSubscriptions();
     clearSelectedStop();
-  }, [clearSelectedStop]);
+  }, [clearSelectedStop, cleanupTempSubscriptions]);
 
   // Handle clicking a timetable departure to find and select matching vehicle
   const handleDepartureClick = useCallback(
@@ -353,16 +399,20 @@ const App = () => {
       let bestDistance = Infinity;
 
       for (const vehicle of vehicles.values()) {
-        if (vehicle.routeId === routeId && vehicle.direction === mqttDir) {
-          if (selectedStop) {
-            const dist = Math.abs(vehicle.lat - selectedStop.lat) + Math.abs(vehicle.lng - selectedStop.lon);
-            if (dist < bestDistance) {
-              bestDistance = dist;
-              bestMatch = vehicle;
-            }
-          } else {
+        if (vehicle.routeId !== routeId || vehicle.direction !== mqttDir) continue;
+
+        // Match by trip start time (HH:mm) for exact trip identification
+        if (vehicle.startTime === departure.tripStartTime) {
+          bestMatch = vehicle;
+          break;
+        }
+
+        // Fallback: closest vehicle to the stop (if startTime doesn't match exactly)
+        if (selectedStop) {
+          const dist = Math.abs(vehicle.lat - selectedStop.lat) + Math.abs(vehicle.lng - selectedStop.lon);
+          if (dist < bestDistance) {
+            bestDistance = dist;
             bestMatch = vehicle;
-            break;
           }
         }
       }
@@ -379,12 +429,19 @@ const App = () => {
   );
 
   // Per-tab nearby toggle value and handler
-  const nearbyToggleValue = activeTab === 'vehicles' ? showNearby : activeTab === 'routes' ? showNearbyRoutes : showStops;
-  const handleNearbyToggle = useCallback(() => {
-    if (activeTab === 'vehicles') setShowNearby(!showNearby);
-    else if (activeTab === 'routes') setShowNearbyRoutes(!showNearbyRoutes);
-    else setShowStops(!showStops);
-  }, [activeTab, showNearby, showNearbyRoutes, showStops, setShowNearby, setShowNearbyRoutes, setShowStops]);
+  const anyNearbyActive = showNearby || showNearbyRoutes || showStops;
+
+  // Close nearby menu when clicking outside
+  useEffect(() => {
+    if (!nearbyMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (nearbyMenuRef.current && !nearbyMenuRef.current.contains(e.target as Node)) {
+        setNearbyMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [nearbyMenuOpen]);
 
   // Nearby routes: routes from nearby stops that aren't already subscribed
   const nearbyRoutes = useMemo(() => {
@@ -406,6 +463,49 @@ const App = () => {
     });
   }, [nearbyStops, showNearbyRoutes, subscribedRoutes]);
 
+  // Fetch route patterns for subscribed routes + temporarily activated routes + nearby routes
+  const nearbyRouteIds = useMemo(
+    () => nearbyRoutes.map((r) => r.gtfsId),
+    [nearbyRoutes],
+  );
+
+  // Subscribe to MQTT for nearby routes when they change
+  const nearbyMqttRouteIds = useRef(new Set<string>());
+  useEffect(() => {
+    const permanentIds = new Set(subscribedRoutes.map((r) => r.gtfsId));
+    const newIds = new Set(nearbyRouteIds);
+
+    // Unsubscribe from routes that are no longer nearby
+    for (const id of nearbyMqttRouteIds.current) {
+      if (!newIds.has(id) && !permanentIds.has(id)) {
+        mqttService.unsubscribeFromRoute(id);
+        mqttService.removeActiveRoute(id);
+      }
+    }
+
+    // Subscribe to new nearby routes
+    for (const id of newIds) {
+      if (!nearbyMqttRouteIds.current.has(id) && !permanentIds.has(id)) {
+        mqttService.subscribeToRoute(id);
+        mqttService.addActiveRoute(id);
+      }
+    }
+
+    nearbyMqttRouteIds.current = newIds;
+  }, [nearbyRouteIds, subscribedRoutes]);
+
+  const routeIds = useMemo(() => {
+    const ids = new Set(subscribedRoutes.map((r) => r.gtfsId));
+    // Include selected route if not already subscribed
+    if (selectedRouteId) ids.add(selectedRouteId);
+    // Include stop routes if a stop is selected
+    for (const id of selectedStopRouteIds) ids.add(id);
+    // Include nearby routes when enabled
+    for (const id of nearbyRouteIds) ids.add(id);
+    return Array.from(ids);
+  }, [subscribedRoutes, selectedRouteId, selectedStopRouteIds, nearbyRouteIds]);
+  const { data: patterns } = useRoutePatterns(routeIds);
+
   return (
     <div className="h-full w-full relative bg-gray-100 dark:bg-gray-950">
       {/* Map */}
@@ -413,7 +513,7 @@ const App = () => {
         patterns={patterns}
         onSubscribe={handleSubscribeRoute}
         onUnsubscribe={handleUnsubscribe}
-        nearbyRadius={showNearby ? nearbyRadius : undefined}
+        nearbyRadius={anyNearbyActive ? nearbyRadius : undefined}
         selectedVehicleId={selectedVehicleId}
         onVehicleSelect={setSelectedVehicleId}
         selectedRouteId={selectedRouteId}
@@ -421,10 +521,11 @@ const App = () => {
         bottomPadding={sheetHeight}
         nearbyStops={nearbyStops}
         onStopClick={handleStopClick}
+        nearbyRouteIds={nearbyRouteIds}
       />
 
       {/* Status bar with search */}
-      <StatusBar onSelectRoute={handleSelectRoute} />
+      <StatusBar onActivateRoute={handleActivateRoute} onToggleRouteSubscription={handleSelectRoute} nearbyStops={nearbyStops} onStopClick={handleStopClick} />
 
       {/* Floating action buttons - top right corner */}
       <div className="fixed right-4 z-30 flex flex-col gap-2" style={{ top: FAB_TOP_OFFSET }}>
@@ -494,21 +595,38 @@ const App = () => {
                 Stops
               </button>
             </div>
-            <label className="flex shrink-0 items-center gap-2 cursor-pointer">
-              <span className="text-sm text-gray-600 dark:text-gray-400">Nearby</span>
-              <div
-                className={`relative w-10 h-6 rounded-full transition-colors ${
-                  nearbyToggleValue ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-600'
+            <div className="relative shrink-0" ref={nearbyMenuRef}>
+              <button
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  anyNearbyActive
+                    ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
-                onClick={handleNearbyToggle}
+                onClick={() => setNearbyMenuOpen(!nearbyMenuOpen)}
               >
-                <div
-                  className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                    nearbyToggleValue ? 'translate-x-5' : 'translate-x-1'
-                  }`}
-                />
-              </div>
-            </label>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Nearby
+              </button>
+              {nearbyMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                  <label className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">Vehicles</span>
+                    <input type="checkbox" checked={showNearby} onChange={(e) => setShowNearby(e.target.checked)} className="w-4 h-4 accent-primary-500" />
+                  </label>
+                  <label className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">Routes</span>
+                    <input type="checkbox" checked={showNearbyRoutes} onChange={(e) => setShowNearbyRoutes(e.target.checked)} className="w-4 h-4 accent-primary-500" />
+                  </label>
+                  <label className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">Stops</span>
+                    <input type="checkbox" checked={showStops} onChange={(e) => setShowStops(e.target.checked)} className="w-4 h-4 accent-primary-500" />
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         }
       >
@@ -520,6 +638,7 @@ const App = () => {
               onVehicleClick={(v) => {
                 setSelectedRouteId(null);
                 clearSelectedStop();
+                cleanupTempSubscriptions();
                 setSelectedVehicleId(v.vehicleId);
               }}
               onSubscribe={handleSubscribeFromVehicle}
@@ -534,9 +653,11 @@ const App = () => {
                 onRouteClick={(route) => {
                   setSelectedVehicleId(null);
                   clearSelectedStop();
+                  cleanupTempSubscriptions();
                   setSelectedRouteId(route.gtfsId);
                 }}
                 selectedRouteId={selectedRouteId}
+                hasNearbyRoutes={nearbyRoutes.length > 0}
               />
               {showNearbyRoutes && nearbyRoutes.length > 0 && (
                 <div className="mt-4">
@@ -544,11 +665,12 @@ const App = () => {
                   <div className="space-y-2 px-0.5">
                     {nearbyRoutes.map((route) => {
                       const color = TRANSPORT_COLORS[route.mode ?? 'bus'] ?? TRANSPORT_COLORS.bus;
+                      const isActive = selectedRouteId === route.gtfsId;
                       return (
                         <div
                           key={route.gtfsId}
-                          className="bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                          onClick={() => handleSelectRoute(route)}
+                          className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isActive ? 'outline outline-2 outline-primary-500' : ''}`}
+                          onClick={() => handleActivateRoute(route)}
                         >
                           <div
                             className="w-10 h-10 min-[425px]:w-12 min-[425px]:h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
@@ -568,7 +690,7 @@ const App = () => {
                             className="shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 flex items-center justify-center hover:bg-primary-100 dark:hover:bg-primary-900 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSelectRoute(route);
+                              handleSubscribeRoute(route);
                             }}
                             title="Track this route"
                           >
@@ -615,10 +737,11 @@ interface RoutesListProps {
   onUnsubscribe: (gtfsId: string) => void;
   onRouteClick?: (route: SubscribedRoute) => void;
   selectedRouteId?: string | null;
+  hasNearbyRoutes?: boolean;
 }
 
-const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRouteId }: RoutesListProps) => {
-  if (routes.length === 0) {
+const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRouteId, hasNearbyRoutes }: RoutesListProps) => {
+  if (routes.length === 0 && !hasNearbyRoutes) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -632,8 +755,8 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
           </svg>
         </div>
         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">No routes</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[200px]">
-          Add routes to track them in real-time
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[220px]">
+          Search for routes to track them, or enable nearby mode to discover routes near you
         </p>
       </div>
     );
@@ -671,25 +794,10 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
                   {route.mode} {vehicleCount > 0 && `• ${vehicleCount} direction${vehicleCount > 1 ? 's' : ''}`}
                 </div>
               </div>
-              <button
-                className="group shrink-0 w-8 h-8 min-[425px]:w-10 min-[425px]:h-10 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUnsubscribe(route.gtfsId);
-                }}
+              <ConfirmDeleteButton
+                onConfirm={() => onUnsubscribe(route.gtfsId)}
                 title="Remove route"
-              >
-                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 group-hover:hidden" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <svg className="w-4 h-4 min-[425px]:w-5 min-[425px]:h-5 hidden group-hover:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              />
             </motion.div>
           );
         })}

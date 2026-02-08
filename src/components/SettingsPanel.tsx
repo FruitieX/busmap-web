@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSettingsStore, useSubscriptionStore } from '@/stores';
+import { useSettingsStore, useSubscriptionStore, useSubscribedStopStore } from '@/stores';
 import { MAP_STYLES } from '@/types';
 import type { MapStyle } from '@/types';
 
@@ -62,6 +62,8 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setShowRouteLines,
     showStops,
     setShowStops,
+    showNearbyRoutes,
+    setShowNearbyRoutes,
     animateVehicles,
     setAnimateVehicles,
     developerMode,
@@ -70,6 +72,9 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
   const clearAllSubscriptions = useSubscriptionStore((state) => state.clearAllSubscriptions);
   const subscribedCount = useSubscriptionStore((state) => state.subscribedRoutes.length);
+  const clearAllStops = useSubscribedStopStore((state) => state.clearAllStops);
+  const subscribedStopCount = useSubscribedStopStore((state) => state.subscribedStops.length);
+  const totalSavedCount = subscribedCount + subscribedStopCount;
 
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date'>('idle');
 
@@ -139,31 +144,44 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {/* Nearby Mode Toggle */}
+              {/* Nearby Mode */}
               <section>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
                   Nearby Mode
                 </h3>
-                <label className="flex items-center justify-between cursor-pointer p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">
-                      Show nearby vehicles
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Display all vehicles around your location in addition to saved routes
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={showNearby}
-                    onChange={toggleNearby}
-                    className="w-5 h-5 accent-primary-500"
-                  />
-                </label>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-700 dark:text-gray-200">Show nearby vehicles</span>
+                    <input
+                      type="checkbox"
+                      checked={showNearby}
+                      onChange={toggleNearby}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-700 dark:text-gray-200">Show nearby routes</span>
+                    <input
+                      type="checkbox"
+                      checked={showNearbyRoutes}
+                      onChange={(e) => setShowNearbyRoutes(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-700 dark:text-gray-200">Show nearby stops</span>
+                    <input
+                      type="checkbox"
+                      checked={showStops}
+                      onChange={(e) => setShowStops(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+                </div>
               </section>
 
-              {/* Nearby Radius (only show when nearby mode is active) */}
-              {showNearby && (
+              {/* Nearby Radius (show when any nearby mode is active) */}
+              {(showNearby || showNearbyRoutes || showStops) && (
                 <section>
                   <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
                     Nearby Radius
@@ -258,22 +276,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                     />
                   </label>
 
-                  {/* Show stops on map */}
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <div>
-                      <span className="text-gray-700 dark:text-gray-200">Show stops on map</span>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        Display transit stop markers on the map
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={showStops}
-                      onChange={(e) => setShowStops(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-
                   {/* Animate vehicles */}
                   <label className="flex items-center justify-between cursor-pointer">
                     <span className="text-gray-700 dark:text-gray-200">Animate vehicles</span>
@@ -294,10 +296,10 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                 </h3>
                 <button
                   className="w-full p-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
-                  onClick={clearAllSubscriptions}
-                  disabled={subscribedCount === 0}
+                  onClick={() => { clearAllSubscriptions(); clearAllStops(); }}
+                  disabled={totalSavedCount === 0}
                 >
-                  Clear all saved routes ({subscribedCount})
+                  Clear all saved data ({totalSavedCount})
                 </button>
               </section>
 

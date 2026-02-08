@@ -150,6 +150,18 @@ export interface StopDeparture {
   routeLongName: string;
   routeMode: TransportMode;
   directionId: number; // GTFS direction (0 or 1)
+  tripStartTime: string; // HH:mm - departure from first stop (matches vehicle startTime)
+}
+
+// Subscribed (bookmarked) transit stop
+export interface SubscribedStop {
+  gtfsId: string;
+  name: string;
+  code: string;
+  lat: number;
+  lon: number;
+  vehicleMode: TransportMode;
+  subscribedAt: number;
 }
 
 // App settings
