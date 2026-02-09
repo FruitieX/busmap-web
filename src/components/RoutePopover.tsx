@@ -13,6 +13,7 @@ interface RoutePopoverProps {
   onSubscribe: () => void;
   onUnsubscribe: () => void;
   onBackToStop?: () => void;
+  onReCenter?: () => void;
 }
 
 const formatDistance = (meters: number): string => {
@@ -45,7 +46,7 @@ const calculateRouteLength = (patterns: RoutePattern[]): number => {
   return maxLength;
 };
 
-const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe, onBackToStop }: RoutePopoverProps) => {
+const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe, onBackToStop, onReCenter }: RoutePopoverProps) => {
   const color = ('color' in route && route.color) || TRANSPORT_COLORS[route.mode ?? 'bus'] || TRANSPORT_COLORS.bus;
 
   const stats = useMemo(() => {
@@ -129,17 +130,30 @@ const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClos
       </div>
 
       {/* Subscribe/Unsubscribe button */}
-      <button
-        onClick={isSubscribed ? onUnsubscribe : onSubscribe}
-        className={`w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-          isSubscribed
-            ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-            : 'text-white hover:opacity-90'
-        }`}
-        style={!isSubscribed ? { backgroundColor: color } : {}}
-      >
-        {isSubscribed ? 'Stop tracking route' : 'Track this route'}
-      </button>
+      <div className="flex gap-1.5">
+        {onReCenter && (
+          <button
+            onClick={onReCenter}
+            className="py-1.5 sm:py-2 px-3 rounded-lg text-xs sm:text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            title="Re-center on route"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+        )}
+        <button
+          onClick={isSubscribed ? onUnsubscribe : onSubscribe}
+          className={`flex-1 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+            isSubscribed
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              : 'text-white hover:opacity-90'
+          }`}
+          style={!isSubscribed ? { backgroundColor: color } : {}}
+        >
+          {isSubscribed ? 'Stop tracking route' : 'Track this route'}
+        </button>
+      </div>
     </motion.div>
   );
 };

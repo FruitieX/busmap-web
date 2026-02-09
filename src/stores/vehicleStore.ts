@@ -108,7 +108,7 @@ interface VehicleState {
   getNearbyVehicles: () => TrackedVehicle[];
 }
 
-export const useVehicleStore = create<VehicleState>((set, get) => ({
+const createVehicleStore = () => create<VehicleState>((set, get) => ({
   vehicles: new Map(),
   connectionStatus: 'disconnected',
   lastConnected: null,
@@ -265,9 +265,24 @@ export const useVehicleStore = create<VehicleState>((set, get) => ({
   },
 }));
 
-// Set up stale vehicle cleanup interval
+type VehicleStore = ReturnType<typeof createVehicleStore>;
+export const useVehicleStore: VehicleStore =
+  (import.meta.hot?.data?.useVehicleStore as VehicleStore | undefined) ?? createVehicleStore();
+
+// Set up stale vehicle cleanup interval (avoid duplicates on HMR)
 if (typeof window !== 'undefined') {
-  setInterval(() => {
+  if (import.meta.hot?.data?.staleCleanupInterval) {
+    clearInterval(import.meta.hot.data.staleCleanupInterval);
+  }
+  const intervalId = setInterval(() => {
     useVehicleStore.getState().removeStaleVehicles();
   }, 5000);
+  if (import.meta.hot) {
+    import.meta.hot.data.staleCleanupInterval = intervalId;
+  }
+}
+
+// Preserve store across HMR
+if (import.meta.hot) {
+  import.meta.hot.data.useVehicleStore = useVehicleStore;
 }

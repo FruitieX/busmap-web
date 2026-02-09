@@ -72,7 +72,7 @@ interface LocationState {
   resetViewport: () => void;
 }
 
-export const useLocationStore = create<LocationState>((set, get) => ({
+const createLocationStore = () => create<LocationState>((set, get) => ({
   userLocation: null,
   lastKnownLocation: lastLocation,
   locationError: null,
@@ -161,6 +161,10 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   consumePendingFlyTo: () => set({ pendingFlyTo: null }),
   resetViewport: () => set({ viewport: DEFAULT_VIEWPORT }),
 }));
+
+type LocationStore = ReturnType<typeof createLocationStore>;
+export const useLocationStore: LocationStore =
+  (import.meta.hot?.data?.useLocationStore as LocationStore | undefined) ?? createLocationStore();
 
 // ============================================================================
 // Location tracking
@@ -310,3 +314,8 @@ export const stopWatchingLocation = () => {
   stopWatcher();
   document.removeEventListener('visibilitychange', handleVisibilityChange);
 };
+
+// Preserve store across HMR
+if (import.meta.hot) {
+  import.meta.hot.data.useLocationStore = useLocationStore;
+}

@@ -222,7 +222,14 @@ const App = () => {
       .catch(console.error);
 
     return () => {
-      mqttService.disconnect();
+      // During HMR the mqttService singleton persists via import.meta.hot.data,
+      // so disconnecting would wipe its subscriptions set while React Refresh
+      // preserves the useRef tracking (nearbyMqttRouteIds, tempMqttRouteIds).
+      // That mismatch causes the nearby-routes effect to see no diff and skip
+      // re-subscribing, losing all nearby vehicles.
+      if (!import.meta.hot) {
+        mqttService.disconnect();
+      }
     };
   }, [flyToUserLocation]);
 
@@ -413,7 +420,7 @@ const App = () => {
           sheetContentRef.current.scrollTop = 0;
         }
         const { flyToLocation } = useLocationStore.getState();
-        flyToLocation(stop.lat, stop.lon, 14);
+        flyToLocation(stop.lat, stop.lon, 13);
 
         // Temporarily subscribe to MQTT for stop's routes (not persisted)
         const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));

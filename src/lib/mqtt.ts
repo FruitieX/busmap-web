@@ -475,16 +475,26 @@ class MqttService {
   }
 }
 
-// Singleton instance
-export const mqttService = new MqttService();
+// Singleton instance — preserve across HMR to keep MQTT connection alive
+export const mqttService: MqttService =
+  (import.meta.hot?.data?.mqttService as MqttService | undefined) ?? new MqttService();
 
-// Pause/resume MQTT when tab visibility changes
+// Pause/resume MQTT when tab visibility changes (avoid duplicates on HMR)
 if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
+  // Clean up old listener on HMR before adding new one
+  if (import.meta.hot?.data?.visibilityHandler) {
+    document.removeEventListener('visibilitychange', import.meta.hot.data.visibilityHandler);
+  }
+  const visibilityHandler = () => {
     if (document.hidden) {
       mqttService.pause();
     } else {
       mqttService.resume();
     }
-  });
+  };
+  document.addEventListener('visibilitychange', visibilityHandler);
+  if (import.meta.hot) {
+    import.meta.hot.data.mqttService = mqttService;
+    import.meta.hot.data.visibilityHandler = visibilityHandler;
+  }
 }

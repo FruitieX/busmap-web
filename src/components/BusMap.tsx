@@ -15,54 +15,82 @@ import { TOP_BAR_HEIGHT, getVehicleTiming } from '@/constants';
 
 import { MAP_STYLES } from '@/types';
 
-// Create arrow image for vehicle heading indicator (triangle shape)
-// Takes a fill color and creates an arrow with white outline
-const createArrowImage = (fillColor: string): ImageData => {
-  const size = 64; // Higher resolution for crisp rendering
+// Create a composite vehicle marker image: heading arrow + colored circle.
+// The arrow and circle are baked into a single icon so `symbol-sort-key`
+// controls the draw order of both as a unit, giving correct z-ordering
+// when markers overlap.
+//
+// Route text is rendered separately via MapLibre's native `text-field`
+// with `text-rotation-alignment: 'viewport'` so it stays upright while
+// the arrow+circle rotates with the vehicle heading.
+//
+// The arrow always points "up" (north) in the image; the layer's
+// `icon-rotate` property rotates the whole icon to match heading.
+const MARKER_IMAGE_SIZE = 256;
+// The circle radius within the image — used to compute icon-size scaling
+const MARKER_CIRCLE_RADIUS = 50;
+
+const createVehicleMarkerImage = (
+  fillColor: string,
+  isSubscribed: boolean,
+): ImageData => {
+  const size = MARKER_IMAGE_SIZE;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  // Clear canvas (fully transparent)
   ctx.clearRect(0, 0, size, size);
 
-  // Draw arrow centered in canvas (for icon-anchor: 'center')
-  ctx.translate(size / 2, size / 2);
+  const center = size / 2; // 128
+  const strokeWidth = isSubscribed ? 8 : 5;
+  const circleRadius = MARKER_CIRCLE_RADIUS - strokeWidth / 2 - 1;
 
-  // Scale up the triangle for the larger canvas
-  const scale = size / 16;
+  // --- Heading arrow (drawn first so the circle occludes its base) ---
+  const arrowHeight = 52;
+  const arrowHalfWidth = 28;
+  // Arrow tip above the circle edge, base overlaps slightly with the circle top
+  const arrowTipY = center - MARKER_CIRCLE_RADIUS - arrowHeight * 0.6;
+  const arrowBaseY = center - MARKER_CIRCLE_RADIUS + arrowHeight * 0.3;
 
-  // Triangle shape pointing up
-  const drawTriangle = () => {
+  const drawArrow = () => {
     ctx.beginPath();
-    ctx.moveTo(0 * scale, -4 * scale); // top tip
-    ctx.lineTo(8 * scale, 8 * scale); // bottom right
-    ctx.lineTo(-8 * scale, 8 * scale); // bottom left
+    ctx.moveTo(center, arrowTipY); // tip
+    ctx.lineTo(center + arrowHalfWidth, arrowBaseY); // bottom right
+    ctx.lineTo(center - arrowHalfWidth, arrowBaseY); // bottom left
     ctx.closePath();
   };
 
-  // White outline (draw first, wider)
-  drawTriangle();
+  // White outline (drawn first, wider)
+  drawArrow();
   ctx.strokeStyle = 'white';
-  ctx.lineWidth = 15;
+  ctx.lineWidth = 10;
   ctx.lineJoin = 'round';
   ctx.stroke();
 
   // Fill with the vehicle color
-  drawTriangle();
+  drawArrow();
   ctx.fillStyle = fillColor;
   ctx.fill();
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+  // --- Circle with white stroke ---
+  ctx.beginPath();
+  ctx.arc(center, center, circleRadius, 0, Math.PI * 2);
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = strokeWidth;
+  ctx.stroke();
+
   return ctx.getImageData(0, 0, size, size);
 };
 
-// Track which arrow colors have been added to the map
-const arrowImageColors = new Set<string>();
+// Track which marker images have been added to the map
+const markerImageNames = new Set<string>();
 
-// Get arrow image name for a color
-const getArrowImageName = (color: string) => `vehicle-arrow-${color.replace('#', '')}`;
+// Get marker image name for a color + subscribed variant
+const getMarkerImageName = (color: string, isSubscribed: boolean) =>
+  `vehicle-marker-${color.replace('#', '')}${isSubscribed ? '-sub' : ''}`;
 
 // Track selection animation state per vehicle: { vehicleId: { selected: boolean, startTime: number } }
 interface SelectionAnimState { selected: boolean; startTime: number }
@@ -142,81 +170,57 @@ const vehiclePingStyle: CircleLayerSpecification = {
   },
 };
 
-// Vehicle circle layer - main dot
-const vehicleCircleStyle: CircleLayerSpecification = {
-  id: 'vehicle-circles',
-  type: 'circle',
-  source: 'vehicles',
-  layout: {
-    'circle-sort-key': ['get', 'sortKey'],
-  },
-  paint: {
-    'circle-radius': ['get', 'circleRadius'],
-    'circle-color': ['get', 'color'],
-    'circle-stroke-color': '#ffffff',
-    'circle-stroke-width': ['case', ['get', 'isSubscribed'], 2.5, 1.5],
-    'circle-opacity': ['get', 'opacity'],
-    'circle-stroke-opacity': ['get', 'opacity'],
-  },
-};
-
-// Vehicle arrow layer - heading indicator (chevron above circle, rendered behind circle)
-const vehicleArrowStyle: SymbolLayerSpecification = {
-  id: 'vehicle-arrows',
+// Vehicle marker layer — arrow + circle baked into icon, route text via text-field.
+// The icon rotates with the vehicle heading (`icon-rotation-alignment: 'map'`)
+// while the text stays upright (`text-rotation-alignment: 'viewport'`).
+// Both live in the same symbol layer so `symbol-sort-key` orders them together.
+//
+// Note: MapLibre draws all icons before all text within a layer, so a background
+// vehicle's text can peek above a foreground vehicle's icon. This is a minor
+// visual artifact — the large arrow+circle icon covers most overlap cases.
+const vehicleMarkerStyle: SymbolLayerSpecification = {
+  id: 'vehicle-markers',
   type: 'symbol',
   source: 'vehicles',
   layout: {
-    'icon-image': ['get', 'arrowImage'],
-    'icon-size': ['get', 'arrowSize'],
+    'icon-image': ['get', 'markerImage'],
+    'icon-size': ['get', 'iconSize'],
     'icon-rotate': ['get', 'heading'],
     'icon-rotation-alignment': 'map',
     'icon-allow-overlap': true,
     'icon-ignore-placement': true,
-    'icon-anchor': 'center',
-    'icon-offset': [0, -80], // Offset is multiplied by icon-size, so this gives ~25px at zoom 14
     'symbol-sort-key': ['get', 'sortKey'],
+    // Route label stays upright regardless of icon heading rotation
+    'text-field': ['get', 'routeShortName'],
+    'text-font': ['literal', ['Open Sans Bold', 'Arial Unicode MS Bold']],
+    'text-size': ['get', 'textSize'],
+    'text-rotation-alignment': 'viewport',
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
   },
   paint: {
     'icon-opacity': ['get', 'opacity'],
-  },
-};
-
-// Vehicle label layer - route number text
-const vehicleLabelStyle: SymbolLayerSpecification = {
-  id: 'vehicle-labels',
-  type: 'symbol',
-  source: 'vehicles',
-  layout: {
-    'text-field': ['get', 'routeShortName'],
-    'text-size': ['get', 'textSize'],
-    'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-    'text-allow-overlap': true,
-    'text-ignore-placement': true,
-    'symbol-sort-key': ['get', 'sortKey'],
-  },
-  paint: {
     'text-color': '#ffffff',
+    'text-halo-color': 'rgba(0,0,0,0.35)',
+    'text-halo-width': 1.5,
     'text-opacity': ['get', 'opacity'],
-    'text-halo-color': 'rgba(0,0,0,0.3)',
-    'text-halo-width': 1,
   },
 };
 
 interface VehicleFeatureProps {
   vehicleId: string;
-  routeShortName: string;
   color: string;
-  arrowImage: string;
+  markerImage: string;
+  iconSize: number;
   opacity: number;
   heading: number;
   isSubscribed: boolean;
   isSelected: boolean;
   pingRadius: number;
   pingOpacity: number;
-  circleRadius: number;
-  arrowSize: number;
-  textSize: number;
   sortKey: number;
+  routeShortName: string;
+  textSize: number;
 }
 
 // Generate a GeoJSON circle polygon (for flat rendering on 3D tilted maps)
@@ -242,11 +246,13 @@ const createCirclePolygon = (lng: number, lat: number, radiusMeters: number, poi
 
 // Popover wrapper component that tracks animated position.
 // Keyed by vehicleId so hooks reset on vehicle change.
-const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscribe }: {
+const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscribe, isFollowing, onReFollow }: {
   vehicle: TrackedVehicle;
   onClose: () => void;
   onSubscribe: () => void;
   onUnsubscribe: () => void;
+  isFollowing: boolean;
+  onReFollow: () => void;
 }) => {
   const pos = useAnimatedPosition(vehicle);
   return (
@@ -262,6 +268,8 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
         onClose={onClose}
         onSubscribe={onSubscribe}
         onUnsubscribe={onUnsubscribe}
+        isFollowing={isFollowing}
+        onReFollow={onReFollow}
       />
     </Marker>
   );
@@ -326,26 +334,26 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const vehiclesRef = useRef<TrackedVehicle[]>(vehicles);
   vehiclesRef.current = vehicles;
 
-  // Add arrow image to map for a specific color
-  const addArrowImageForColor = useCallback((color: string) => {
+  // Add composite marker image (arrow + circle) for a specific color + subscribed variant
+  const addMarkerImage = useCallback((color: string, isSubscribed: boolean) => {
     const map = mapRef.current?.getMap();
     if (!map) return;
-    const imageName = getArrowImageName(color);
+    const imageName = getMarkerImageName(color, isSubscribed);
     if (!map.hasImage(imageName)) {
-      const imageData = createArrowImage(color);
+      const imageData = createVehicleMarkerImage(color, isSubscribed);
       map.addImage(imageName, imageData, { sdf: false });
-      arrowImageColors.add(color);
+      markerImageNames.add(imageName);
     }
   }, []);
 
-  // Clear arrow image tracking on style changes (images are removed when style changes)
+  // Clear image tracking on style changes (images are removed when style changes)
   const handleStyleLoad = useCallback(() => {
-    arrowImageColors.clear();
+    markerImageNames.clear();
   }, []);
 
   // Handle map load
   const handleMapLoad = useCallback(() => {
-    // Arrow images will be added dynamically as vehicles appear
+    // Marker images will be added dynamically as vehicles appear
   }, []);
 
   // Re-register style load handler
@@ -376,9 +384,9 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const selectedStopDirectionsRef = useRef<Record<string, number[]>>(selectedStopDirections);
   selectedStopDirectionsRef.current = selectedStopDirections;
 
-  // Track addArrowImageForColor in ref for rAF loop access
-  const addArrowImageForColorRef = useRef(addArrowImageForColor);
-  addArrowImageForColorRef.current = addArrowImageForColor;
+  // Track image-adding callbacks in ref for rAF loop access
+  const addMarkerImageRef = useRef(addMarkerImage);
+  addMarkerImageRef.current = addMarkerImage;
 
   useEffect(() => {
     const PING_DURATION_MS = 750; // Duration of ping animation after update (matches typical 1s update rate)
@@ -401,16 +409,6 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 15) * 0.3));
       const baseRadius = 14 * zoomScale;
       const selectedScale = 18 / 14; // Ratio of selected to base radius
-      const baseTextSize = 15 * zoomScale;
-      const baseArrowSize = 0.25 * zoomScale; // Base size for 64px arrow icon
-
-      // Scale text size based on label length: shorter labels get larger text
-      const getTextSize = (label: string) => {
-        const len = label.length;
-        // 1 char: 120%, 2 chars: 100%, 3 chars: 85%, 4+ chars: 70%
-        const labelScale = len === 1 ? 1.2 : len === 2 ? 1.0 : len === 3 ? 0.85 : 0.7;
-        return Math.max(2, baseTextSize * labelScale);
-      };
 
       // Periodically prune stale interpolation states to avoid memory leaks
       if (now - lastPrune > PRUNE_INTERVAL_MS) {
@@ -527,31 +525,37 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         }
 
         const circleRadius = baseRadius * selectionScale;
-        const arrowSize = baseArrowSize * selectionScale;
 
-        // Ensure arrow image exists for this color
-        const arrowImage = getArrowImageName(color);
-        if (!arrowImageColors.has(color)) {
-          addArrowImageForColorRef.current(color);
+        // Ensure composite marker image exists for this color + subscribed variant
+        const markerImage = getMarkerImageName(color, isSubscribed);
+        if (!markerImageNames.has(markerImage)) {
+          addMarkerImageRef.current(color, isSubscribed);
         }
+
+        // icon-size scales the sprite so the circle portion matches the desired diameter
+        const iconSize = circleRadius / MARKER_CIRCLE_RADIUS;
+
+        // Text size proportional to circle diameter
+        const textLen = vehicle.routeShortName.length;
+        const labelScale = textLen === 1 ? 1.2 : textLen === 2 ? 1.0 : textLen === 3 ? 0.85 : 0.7;
+        const textSize = Math.round(circleRadius * 2 * 0.536 * labelScale);
 
         features.push({
           type: 'Feature',
           properties: {
             vehicleId: vehicle.vehicleId,
-            routeShortName: vehicle.routeShortName,
             color,
-            arrowImage,
+            markerImage,
+            iconSize,
             opacity,
             heading,
             isSubscribed,
             isSelected,
             pingRadius,
             pingOpacity,
-            circleRadius,
-            arrowSize,
-            textSize: getTextSize(vehicle.routeShortName),
             sortKey,
+            routeShortName: vehicle.routeShortName,
+            textSize,
           },
           geometry: {
             type: 'Point',
@@ -571,6 +575,14 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   // Animation state refs - declared here before effects that use them
   const isAnimatingRef = useRef(false);
   const isProgrammaticMoveRef = useRef(false);
+
+  // Whether the map is actively auto-following the selected vehicle
+  const [isFollowingVehicle, setIsFollowingVehicle] = useState(true);
+  const isFollowingVehicleRef = useRef(true);
+  isFollowingVehicleRef.current = isFollowingVehicle;
+
+  // Whether the user has panned away from the fitted route bounds
+  const [hasMovedFromRoute, setHasMovedFromRoute] = useState(false);
 
   // Handle pending flyTo animations with padding for bottom sheet
   useEffect(() => {
@@ -617,8 +629,15 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   useEffect(() => {
     if (!selectedVehicleId) return;
 
+    // Reset following state when a new vehicle is selected
+    setIsFollowingVehicle(true);
+    isFollowingVehicleRef.current = true;
+
     // Interval to keep vehicle centered - runs every second
     const intervalId = setInterval(() => {
+      // Skip camera movement if user has panned away (not following)
+      if (!isFollowingVehicleRef.current) return;
+
       const vehicle = selectedVehicleRef.current;
       if (!vehicle || !mapRef.current) {
         return;
@@ -662,15 +681,20 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     return () => clearInterval(intervalId);
   }, [selectedVehicleId, bottomPadding]);
 
-  // Auto-deselect vehicle on user-initiated pan/zoom
+  // Stop following on user-initiated pan/zoom (but keep popover open)
   const handleMoveStart = useCallback(
     (evt: ViewStateChangeEvent) => {
-      // Only deselect on user-initiated moves (has originalEvent) and not during programmatic tracking
-      if (selectedVehicleId && evt.originalEvent && !isProgrammaticMoveRef.current) {
-        onVehicleSelect?.(null);
+      // Only react to user-initiated moves (has originalEvent) and not during programmatic tracking
+      if (evt.originalEvent && !isProgrammaticMoveRef.current) {
+        if (selectedVehicleId && isFollowingVehicleRef.current) {
+          setIsFollowingVehicle(false);
+        }
+        if (selectedRouteId && !hasMovedFromRoute) {
+          setHasMovedFromRoute(true);
+        }
       }
     },
-    [selectedVehicleId, onVehicleSelect]
+    [selectedVehicleId, selectedRouteId, hasMovedFromRoute]
   );
 
   const handleMove = useCallback(
@@ -684,6 +708,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const handleVehicleClick = useCallback(
     (vehicle: TrackedVehicle) => {
       const newId = selectedVehicleId === vehicle.vehicleId ? null : vehicle.vehicleId;
+      if (newId) {
+        setIsFollowingVehicle(true);
+        isFollowingVehicleRef.current = true;
+      }
       onVehicleSelect?.(newId);
       onVehicleClick?.(vehicle);
     },
@@ -1073,6 +1101,52 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   useEffect(() => {
     if (!selectedRouteId || !patterns) return;
 
+    setHasMovedFromRoute(false);
+
+    const routePatterns = patterns.get(selectedRouteId);
+    if (routePatterns && routePatterns.length > 0) {
+      fitRouteBounds(routePatterns);
+    }
+  }, [selectedRouteId, patterns, fitRouteBounds]);
+
+  // Re-follow selected vehicle (triggered from popover button)
+  const handleReFollowVehicle = useCallback(() => {
+    setIsFollowingVehicle(true);
+    isFollowingVehicleRef.current = true;
+
+    // Immediately fly to the vehicle
+    const vehicle = selectedVehicleRef.current;
+    if (!vehicle || !mapRef.current) return;
+
+    const duration = 500;
+    let center: [number, number] = [vehicle.lng, vehicle.lat];
+    if (vehicle.speed > 0.3) {
+      const predicted = extrapolate(
+        vehicle.lat,
+        vehicle.lng,
+        vehicle.heading,
+        vehicle.reportedHeading ?? vehicle.heading,
+        vehicle.speed,
+        vehicle.speedAcceleration ?? vehicle.acceleration ?? 0,
+        (Date.now() - vehicle.lastPositionUpdate + duration) / 1000,
+      );
+      center = [predicted.lng, predicted.lat];
+    }
+
+    isProgrammaticMoveRef.current = true;
+    mapRef.current.flyTo({
+      center,
+      zoom: Math.min(Math.max(mapRef.current.getMap()?.getZoom() ?? 15, 15), MAX_TRACKING_ZOOM),
+      duration,
+      padding: { top: TOP_BAR_HEIGHT, left: 0, right: 0, bottom: bottomPadding },
+    });
+    setTimeout(() => { isProgrammaticMoveRef.current = false; }, duration);
+  }, [bottomPadding]);
+
+  // Re-center on route bounds (triggered from popover button)
+  const handleReCenterRoute = useCallback(() => {
+    setHasMovedFromRoute(false);
+    if (!selectedRouteId || !patterns) return;
     const routePatterns = patterns.get(selectedRouteId);
     if (routePatterns && routePatterns.length > 0) {
       fitRouteBounds(routePatterns);
@@ -1166,7 +1240,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       onMoveEnd={handleMove}
       onClick={(e) => {
         // Check if clicked on a vehicle
-        if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'vehicle-circles') {
+        if (e.features && e.features.length > 0 && e.features[0].layer?.id === 'vehicle-markers') {
           handleVehicleLayerClick(e);
         } else if (e.features && e.features.length > 0 && (e.features[0].layer?.id === 'stop-circles' || e.features[0].layer?.id === 'stop-circles-hitarea')) {
           handleStopLayerClick(e);
@@ -1176,7 +1250,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           handleMapClick();
         }
       }}
-      interactiveLayerIds={['vehicle-circles', 'stop-circles', 'stop-circles-hitarea', 'route-lines']}
+      interactiveLayerIds={['vehicle-markers', 'stop-circles', 'stop-circles-hitarea', 'route-lines']}
       cursor="pointer"
       mapStyle={mapStyleUrl}
       style={{ width: '100%', height: '100%' }}
@@ -1293,9 +1367,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       {/* WebGL layers for all vehicles (including selected) */}
       <Source id="vehicles" type="geojson" data={vehicleGeoJson}>
         <Layer {...vehiclePingStyle} />
-        <Layer {...vehicleArrowStyle} />
-        <Layer {...vehicleCircleStyle} />
-        <Layer {...vehicleLabelStyle} />
+        <Layer {...vehicleMarkerStyle} />
       </Source>
 
       {/* Popovers rendered after vehicle markers for higher z-index */}
@@ -1308,6 +1380,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             onClose={() => selectedStop ? onVehicleDeselect?.() : onVehicleSelect?.(null)}
             onSubscribe={handlePopoverSubscribe}
             onUnsubscribe={handlePopoverUnsubscribe}
+            isFollowing={isFollowingVehicle}
+            onReFollow={handleReFollowVehicle}
           />
         )}
       </AnimatePresence>
@@ -1330,6 +1404,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
               onSubscribe={handleRouteSubscribe}
               onUnsubscribe={handleRouteUnsubscribe}
               onBackToStop={onBackToStop}
+              onReCenter={hasMovedFromRoute ? handleReCenterRoute : undefined}
             />
           </Marker>
         )}

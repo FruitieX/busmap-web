@@ -21,7 +21,7 @@ interface StopState {
   clearSelectedStop: () => void;
 }
 
-export const useStopStore = create<StopState>((set) => ({
+const createStopStore = () => create<StopState>((set) => ({
   selectedStop: null,
   selectedStopRouteIds: new Set(),
   selectedStopDirections: {},
@@ -39,3 +39,12 @@ export const useStopStore = create<StopState>((set) => ({
     set({ selectedStop: null, selectedStopRouteIds: new Set(), selectedStopDirections: {} });
   },
 }));
+
+type StopStore = ReturnType<typeof createStopStore>;
+export const useStopStore: StopStore =
+  (import.meta.hot?.data?.useStopStore as StopStore | undefined) ?? createStopStore();
+
+// Preserve store across HMR
+if (import.meta.hot) {
+  import.meta.hot.data.useStopStore = useStopStore;
+}

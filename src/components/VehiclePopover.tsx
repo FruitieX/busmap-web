@@ -10,6 +10,8 @@ interface VehiclePopoverProps {
   onClose: () => void;
   onSubscribe: () => void;
   onUnsubscribe: () => void;
+  isFollowing?: boolean;
+  onReFollow?: () => void;
 }
 
 const formatDelay = (delaySeconds: number): string => {
@@ -33,7 +35,7 @@ const formatLastUpdate = (lastUpdate: number, now: number): string => {
   return `${minutes}m ago`;
 };
 
-const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe }: VehiclePopoverProps) => {
+const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe, isFollowing = true, onReFollow }: VehiclePopoverProps) => {
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const developerMode = useSettingsStore((state) => state.developerMode);
   const [now, setNow] = useState(Date.now());
@@ -164,17 +166,31 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe 
       )}
 
       {/* Subscribe button */}
-      <button
-        onClick={isSubscribed ? onUnsubscribe : onSubscribe}
-        className={`w-full py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-          isSubscribed
-            ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-            : 'text-white hover:opacity-90'
-        }`}
-        style={!isSubscribed ? { backgroundColor: color } : {}}
-      >
-        {isSubscribed ? 'Stop tracking route' : 'Track this route'}
-      </button>
+      <div className="flex gap-1.5">
+        {!isFollowing && onReFollow && (
+          <button
+            onClick={onReFollow}
+            className="py-1.5 sm:py-2 px-3 rounded-lg text-xs sm:text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            title="Re-center on vehicle"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        )}
+        <button
+          onClick={isSubscribed ? onUnsubscribe : onSubscribe}
+          className={`flex-1 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+            isSubscribed
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              : 'text-white hover:opacity-90'
+          }`}
+          style={!isSubscribed ? { backgroundColor: color } : {}}
+        >
+          {isSubscribed ? 'Stop tracking route' : 'Track this route'}
+        </button>
+      </div>
     </motion.div>
   );
 };
