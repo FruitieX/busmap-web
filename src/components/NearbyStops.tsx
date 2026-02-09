@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useStopStore, useSubscribedStopStore, useSettingsStore, useLocationStore } from '@/stores';
-import { getStopTermini } from '@/lib';
+import { getStopTermini, haversineDistance } from '@/lib';
 import { StarToggleButton } from './StarToggleButton';
-import { EARTH_RADIUS_M, KM_IN_METERS } from '@/constants';
+import { KM_IN_METERS } from '@/constants';
 
 interface NearbyStopsProps {
   stops: Array<Stop & { distance: number }>;
@@ -16,19 +16,6 @@ interface NearbyStopsProps {
 const formatDistance = (meters: number): string => {
   if (meters < KM_IN_METERS) return `${Math.round(meters)} m`;
   return `${(meters / KM_IN_METERS).toFixed(1)} km`;
-};
-
-/** Haversine distance between two lat/lng points in meters */
-const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 interface StopCardProps {

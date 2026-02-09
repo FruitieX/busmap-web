@@ -2,7 +2,7 @@ import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVehicleStore, useSubscriptionStore, useSubscribedStopStore } from '@/stores';
 import { useRoutes, getStopTermini } from '@/lib';
-import type { Route, TransportMode, Stop } from '@/types';
+import type { Route, TransportMode, Stop, StopRoute } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { StarToggleButton } from './StarToggleButton';
 
@@ -12,6 +12,10 @@ interface StatusBarProps {
   nearbyStops?: Array<Stop & { distance: number }>;
   onStopClick?: (stop: Stop) => void;
 }
+
+type SearchResultItem =
+  | { kind: 'route'; route: Route }
+  | { kind: 'stop'; stop: Stop & { distance: number } };
 
 const STOP_FILTER_COLOR = '#6366f1'; // indigo — distinct from all transport mode colors
 
@@ -43,7 +47,6 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
 
   const [isSearching, setIsSearching] = useState(false);
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<Route[]>([]);
   const [activeFilters, setActiveFilters] = useState<Set<TransportMode | 'stops'>>(() => new Set(MODE_ORDER.filter((m) => m !== 'ferry')));
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +58,21 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
 
   const showStops = activeFilters.has('stops');
   const showRoutes = MODE_ORDER.some((m) => activeFilters.has(m));
+
+  // Build route → minimum distance map from nearby stops
+  const routeDistanceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!nearbyStops) return map;
+    for (const stop of nearbyStops) {
+      for (const route of stop.routes as StopRoute[]) {
+        const existing = map.get(route.gtfsId);
+        if (existing === undefined || stop.distance < existing) {
+          map.set(route.gtfsId, stop.distance);
+        }
+      }
+    }
+    return map;
+  }, [nearbyStops]);
 
   const toggleFilter = useCallback((filter: TransportMode | 'stops') => {
     setActiveFilters((prev) => {
@@ -133,51 +151,90 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
     };
   }, [isSearching, closeSearch]);
 
-  // Filter routes based on search and active mode filters
+  // Unified search results: routes and stops interleaved by match tier + proximity
+  const combinedResults = useMemo(() => {
+    const searchLower = search.toLowerCase().trim();
+    const items: Array<SearchResultItem & { matchTier: number; distance: number; sortName: string }> = [];
+
+    // Add matching routes
+    if (showRoutes && routes) {
+      let filtered = routes.filter((r) => r.mode && activeFilters.has(r.mode));
+      if (searchLower) {
+        filtered = filtered.filter(
+          (r) =>
+            r.shortName.toLowerCase().includes(searchLower) ||
+            r.longName.toLowerCase().includes(searchLower),
+        );
+      }
+      for (const route of filtered) {
+        const short = route.shortName.toLowerCase();
+        let matchTier: number;
+        if (!searchLower) {
+          matchTier = 3;
+        } else if (short === searchLower) {
+          matchTier = 0;
+        } else if (short.startsWith(searchLower)) {
+          matchTier = 1;
+        } else {
+          matchTier = 2;
+        }
+        items.push({
+          kind: 'route',
+          route,
+          matchTier,
+          distance: routeDistanceMap.get(route.gtfsId) ?? Infinity,
+          sortName: short,
+        });
+      }
+    }
+
+    // Add matching stops
+    if (showStops && nearbyStops) {
+      let filtered = nearbyStops as Array<Stop & { distance: number }>;
+      if (searchLower) {
+        filtered = filtered.filter(
+          (s) =>
+            s.name.toLowerCase().includes(searchLower) ||
+            s.code.toLowerCase().includes(searchLower),
+        );
+      }
+      for (const stop of filtered) {
+        const name = stop.name.toLowerCase();
+        const code = stop.code.toLowerCase();
+        let matchTier: number;
+        if (!searchLower) {
+          matchTier = 3;
+        } else if (name === searchLower || code === searchLower) {
+          matchTier = 0;
+        } else if (name.startsWith(searchLower) || code.startsWith(searchLower)) {
+          matchTier = 1;
+        } else {
+          matchTier = 2;
+        }
+        items.push({
+          kind: 'stop',
+          stop,
+          matchTier,
+          distance: stop.distance,
+          sortName: name,
+        });
+      }
+    }
+
+    // Sort: match tier → distance → alphabetical
+    items.sort((a, b) => {
+      if (a.matchTier !== b.matchTier) return a.matchTier - b.matchTier;
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      return a.sortName.localeCompare(b.sortName);
+    });
+
+    return items.slice(0, 50);
+  }, [search, routes, nearbyStops, activeFilters, showRoutes, showStops, routeDistanceMap]);
+
+  // Reset selection when results change
   useEffect(() => {
-    if (!showRoutes || !routes) {
-      setSearchResults([]);
-      return;
-    }
-
-    // Filter by active mode filters
-    let filtered = routes.filter((r) => r.mode && activeFilters.has(r.mode));
-
-    // Filter by search
-    if (search) {
-      const searchLower = search.toLowerCase().trim();
-      filtered = filtered.filter(
-        (r) =>
-          r.shortName.toLowerCase().includes(searchLower) ||
-          r.longName.toLowerCase().includes(searchLower)
-      );
-
-      // Sort: exact shortName matches first, then starts-with, then contains
-      filtered = [...filtered].sort((a, b) => {
-        const aShort = a.shortName.toLowerCase();
-        const bShort = b.shortName.toLowerCase();
-        
-        // Exact match first
-        const aExact = aShort === searchLower;
-        const bExact = bShort === searchLower;
-        if (aExact && !bExact) return -1;
-        if (bExact && !aExact) return 1;
-        
-        // Starts with second
-        const aStarts = aShort.startsWith(searchLower);
-        const bStarts = bShort.startsWith(searchLower);
-        if (aStarts && !bStarts) return -1;
-        if (bStarts && !aStarts) return 1;
-        
-        // Sort alphabetically by shortName
-        return aShort.localeCompare(bShort);
-      });
-    }
-
-    // Limit results
-    setSearchResults(filtered.slice(0, 50));
     setSelectedIndex(0);
-  }, [search, routes, activeFilters, showRoutes]);
+  }, [search, activeFilters]);
 
   // Available modes in the data
   const availableModes = useMemo(() => {
@@ -185,36 +242,6 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
     const modes = new Set(routes.map((r) => r.mode).filter(Boolean));
     return MODE_ORDER.filter((m) => modes.has(m));
   }, [routes]);
-
-  // Filtered stops for stop search
-  const filteredStops = useMemo(() => {
-    if (!showStops || !nearbyStops) return [];
-    if (!search.trim()) return nearbyStops.slice(0, 50);
-
-    const searchLower = search.toLowerCase().trim();
-    const matched = nearbyStops.filter(
-      (s) =>
-        s.name.toLowerCase().includes(searchLower) ||
-        s.code.toLowerCase().includes(searchLower),
-    );
-
-    // Sort: exact name matches first, then starts-with, then contains
-    return matched
-      .sort((a, b) => {
-        const aName = a.name.toLowerCase();
-        const bName = b.name.toLowerCase();
-        const aExact = aName === searchLower;
-        const bExact = bName === searchLower;
-        if (aExact && !bExact) return -1;
-        if (bExact && !aExact) return 1;
-        const aStarts = aName.startsWith(searchLower);
-        const bStarts = bName.startsWith(searchLower);
-        if (aStarts && !bStarts) return -1;
-        if (bStarts && !aStarts) return 1;
-        return a.distance - b.distance;
-      })
-      .slice(0, 50);
-  }, [showStops, nearbyStops, search]);
 
   const handleSearchClick = useCallback(() => {
     setIsSearching(true);
@@ -257,9 +284,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      // Combined results: routes first, then stops
-      const totalResults = searchResults.length + filteredStops.length;
-      const maxIndex = totalResults - 1;
+      const maxIndex = combinedResults.length - 1;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         keyboardNavRef.current = true;
@@ -270,17 +295,16 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (selectedIndex < searchResults.length) {
-          const selectedRoute = searchResults[selectedIndex];
-          if (selectedRoute) handleRouteSubscriptionToggle(selectedRoute);
+        const item = combinedResults[selectedIndex];
+        if (!item) return;
+        if (item.kind === 'route') {
+          handleRouteSubscriptionToggle(item.route);
         } else {
-          const stopIndex = selectedIndex - searchResults.length;
-          const selectedStop = filteredStops[stopIndex];
-          if (selectedStop) handleStopSubscriptionToggle(selectedStop);
+          handleStopSubscriptionToggle(item.stop);
         }
       }
     },
-    [searchResults, filteredStops, selectedIndex, handleRouteSubscriptionToggle, handleStopSubscriptionToggle],
+    [combinedResults, selectedIndex, handleRouteSubscriptionToggle, handleStopSubscriptionToggle],
   );
 
   // Scroll selected item into view
@@ -447,106 +471,105 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                   ))}
                 </div>
 
-                {/* Results — routes first, then stops */}
+                {/* Results — unified and sorted by match tier + proximity */}
                 <div ref={resultsRef} className="max-h-[280px] overflow-y-auto overflow-x-hidden scrollbar-thin">
-                {filteredStops.length === 0 && searchResults.length === 0 ? (
+                {combinedResults.length === 0 ? (
                   <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
                     {search ? 'No results found' : 'Type to search or select a filter'}
                   </div>
                 ) : (
                   <>
-                  {/* Route results */}
-                  {searchResults.map((route, index) => {
-                    const subscribed = isSubscribed(route);
-                    const color = TRANSPORT_COLORS[route.mode || 'bus'];
+                  {combinedResults.map((item, index) => {
                     const isSelected = index === selectedIndex;
-                    return (
-                      <div
-                        key={route.gtfsId}
-                        role="button"
-                        tabIndex={0}
-                        className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 cursor-pointer ${
-                          isSelected
-                            ? 'bg-gray-100 dark:bg-gray-800'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                        }`}
-                        onClick={() => handleSelectRoute(route)}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                      >
+                    if (item.kind === 'route') {
+                      const { route } = item;
+                      const subscribed = isSubscribed(route);
+                      const color = TRANSPORT_COLORS[route.mode || 'bus'];
+                      return (
                         <div
-                          className="w-10 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm shrink-0"
-                          style={{ backgroundColor: color }}
+                          key={route.gtfsId}
+                          role="button"
+                          tabIndex={0}
+                          className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-gray-100 dark:bg-gray-800'
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                          }`}
+                          onClick={() => handleSelectRoute(route)}
+                          onMouseEnter={() => setSelectedIndex(index)}
                         >
-                          {route.shortName}
+                          <div
+                            className="w-10 h-8 rounded-md flex items-center justify-center text-white font-bold text-sm shrink-0"
+                            style={{ backgroundColor: color }}
+                          >
+                            {route.shortName}
+                          </div>
+                          <div className="flex-1 text-left min-w-0 h-8 flex items-center">
+                            <span className="text-sm text-gray-900 dark:text-white truncate">
+                              {route.longName}
+                            </span>
+                          </div>
+                          <StarToggleButton
+                            active={subscribed}
+                            onToggle={() => handleRouteSubscriptionToggle(route)}
+                            title={subscribed ? 'Stop tracking' : 'Track this route'}
+                            size="sm"
+                          />
                         </div>
-                        <div className="flex-1 text-left min-w-0 h-8 flex items-center">
-                          <span className="text-sm text-gray-900 dark:text-white truncate">
-                            {route.longName}
-                          </span>
-                        </div>
-                        <StarToggleButton
-                          active={subscribed}
-                          onToggle={() => handleRouteSubscriptionToggle(route)}
-                          title={subscribed ? 'Stop tracking' : 'Track this route'}
-                          size="sm"
-                        />
-                      </div>
-                    );
-                  })}
-                  {/* Stop results */}
-                  {filteredStops.map((stop, index) => {
-                    const combinedIndex = searchResults.length + index;
-                    const stopSubscribed = isStopSubscribed(stop.gtfsId);
-                    const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
-                    const isSelected = combinedIndex === selectedIndex;
-                    return (
-                      <div
-                        key={stop.gtfsId}
-                        role="button"
-                        tabIndex={0}
-                        className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 cursor-pointer ${
-                          isSelected
-                            ? 'bg-gray-100 dark:bg-gray-800'
-                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                        }`}
-                        onClick={() => handleStopSelect(stop)}
-                        onMouseEnter={() => setSelectedIndex(combinedIndex)}
-                      >
+                      );
+                    } else {
+                      const { stop } = item;
+                      const stopSubscribed = isStopSubscribed(stop.gtfsId);
+                      const color = TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus;
+                      return (
                         <div
-                          className="w-10 h-8 rounded-md flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}` }}
+                          key={stop.gtfsId}
+                          role="button"
+                          tabIndex={0}
+                          className={`w-full flex items-center gap-3 py-2 rounded-lg px-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-gray-100 dark:bg-gray-800'
+                              : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                          }`}
+                          onClick={() => handleStopSelect(stop)}
+                          onMouseEnter={() => setSelectedIndex(index)}
                         >
-                          <svg className="w-4 h-4" fill={color} viewBox="0 0 24 24">
-                            <path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 14 8 14s8-8.75 8-14c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 text-left min-w-0">
-                          <div className="text-sm text-gray-900 dark:text-white truncate">
-                            {stop.name}
-                            {stop.code && (
-                              <span className="text-xs text-gray-400 ml-1">{stop.code}</span>
-                            )}
+                          <div
+                            className="w-10 h-8 rounded-md flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}` }}
+                          >
+                            <svg className="w-4 h-4" fill={color} viewBox="0 0 24 24">
+                              <path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 14 8 14s8-8.75 8-14c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
+                            </svg>
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 capitalize truncate">
-                            {stop.vehicleMode} • {stop.routes.length} routes
+                          <div className="flex-1 text-left min-w-0">
+                            <div className="text-sm text-gray-900 dark:text-white truncate">
+                              {stop.name}
+                              {stop.code && (
+                                <span className="text-xs text-gray-400 ml-1">{stop.code}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 capitalize truncate">
+                              {stop.vehicleMode} • {stop.routes.length} routes
+                            </div>
+                            {(() => {
+                              const termini = getStopTermini(stop.routes, stop.headsigns);
+                              return termini ? (
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
+                                  {termini}
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
-                          {(() => {
-                            const termini = getStopTermini(stop.routes, stop.headsigns);
-                            return termini ? (
-                              <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
-                                {termini}
-                              </div>
-                            ) : null;
-                          })()}
+                          <StarToggleButton
+                            active={stopSubscribed}
+                            onToggle={() => handleStopSubscriptionToggle(stop)}
+                            title={stopSubscribed ? 'Remove stop' : 'Save this stop'}
+                            size="sm"
+                          />
                         </div>
-                        <StarToggleButton
-                          active={stopSubscribed}
-                          onToggle={() => handleStopSubscriptionToggle(stop)}
-                          title={stopSubscribed ? 'Remove stop' : 'Save this stop'}
-                          size="sm"
-                        />
-                      </div>
-                    );
+                      );
+                    }
                   })}
                   </>
                 )}
