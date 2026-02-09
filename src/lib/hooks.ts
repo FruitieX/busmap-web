@@ -33,6 +33,7 @@ export const useRoutePatterns = (routeIds: string[]) => {
     staleTime: 1000 * 60 * 60, // 1 hour
     gcTime: 1000 * 60 * 60 * 24, // 24 hours
     enabled: routeIds.length > 0 && isApiKeyConfigured(),
+    placeholderData: keepPreviousData, // keep showing old patterns while refetching
   });
 };
 
