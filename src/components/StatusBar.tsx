@@ -18,6 +18,7 @@ type SearchResultItem =
   | { kind: 'stop'; stop: Stop & { distance: number } };
 
 const STOP_FILTER_COLOR = '#6366f1'; // indigo — distinct from all transport mode colors
+const FILTERS_STORAGE_KEY = 'busmap-search-filters';
 
 const MODE_ORDER: TransportMode[] = ['bus', 'tram', 'metro', 'train', 'ferry'];
 const MODE_LABELS: Record<TransportMode, string> = {
@@ -28,6 +29,25 @@ const MODE_LABELS: Record<TransportMode, string> = {
   ferry: 'Ferry',
   ubus: 'U-bus',
   robot: 'Robot',
+};
+
+const DEFAULT_FILTERS = new Set<TransportMode | 'stops'>([...MODE_ORDER.filter((m) => m !== 'ferry'), 'stops']);
+
+const loadFilters = (): Set<TransportMode | 'stops'> => {
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      const arr = JSON.parse(stored) as string[];
+      if (Array.isArray(arr) && arr.length > 0) return new Set(arr as Array<TransportMode | 'stops'>);
+    }
+  } catch { /* ignore */ }
+  return new Set(DEFAULT_FILTERS);
+};
+
+const saveFilters = (filters: Set<TransportMode | 'stops'>) => {
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify([...filters]));
+  } catch { /* ignore */ }
 };
 
 const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearbyStops, onStopClick }: StatusBarProps) => {
@@ -47,7 +67,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
 
   const [isSearching, setIsSearching] = useState(false);
   const [search, setSearch] = useState('');
-  const [activeFilters, setActiveFilters] = useState<Set<TransportMode | 'stops'>>(() => new Set(MODE_ORDER.filter((m) => m !== 'ferry')));
+  const [activeFilters, setActiveFilters] = useState<Set<TransportMode | 'stops'>>(loadFilters);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -82,6 +102,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
       } else {
         next.add(filter);
       }
+      saveFilters(next);
       return next;
     });
     setSelectedIndex(0);
@@ -90,7 +111,6 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
   const closeSearch = useCallback(() => {
     setIsSearching(false);
     setSearch('');
-    setActiveFilters(new Set(MODE_ORDER.filter((m) => m !== 'ferry')));
     setSelectedIndex(0);
   }, []);
 
