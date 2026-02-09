@@ -9,12 +9,27 @@ export const UpdateToast = () => {
 
   const handleReload = async () => {
     try {
+      // Wait for the new service worker to take control before reloading.
+      // Reloading too early (before the new SW is active) can result in a
+      // white screen because neither the old nor the new SW serves assets.
+      const controllerChanged = new Promise<void>((resolve) => {
+        const onControllerChange = () => {
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          resolve();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+      });
+
       await updateServiceWorker(true);
+
+      // Wait for the new SW to claim clients, with a timeout fallback
+      await Promise.race([
+        controllerChanged,
+        new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      ]);
     } catch {
-      // Fallback: force reload if SW update didn't trigger one
-      window.location.reload();
+      // SW update failed — fall through to reload anyway
     }
-    // If updateServiceWorker resolved without reloading, force it
     window.location.reload();
   };
 
