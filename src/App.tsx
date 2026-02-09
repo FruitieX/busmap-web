@@ -141,16 +141,21 @@ const App = () => {
   // Temporary MQTT subscriptions for activated (not permanently subscribed) routes
   const tempMqttRouteIds = useRef(new Set<string>());
 
+  // Nearby route MQTT subscriptions (managed separately from temp subscriptions)
+  const nearbyMqttRouteIds = useRef(new Set<string>());
+
   // Clean up temporary MQTT subscriptions that aren't permanently subscribed
   const cleanupTempSubscriptions = useCallback(() => {
     const permanentIds = new Set(useSubscriptionStore.getState().subscribedRoutes.map((r) => r.gtfsId));
     for (const id of tempMqttRouteIds.current) {
-      if (!permanentIds.has(id)) {
+      // Skip routes that are also tracked by the nearby routes system
+      const isNearby = nearbyMqttRouteIds.current.has(id);
+      if (!permanentIds.has(id) && !isNearby) {
         mqttService.unsubscribeFromRoute(id);
+        mqttService.removeActiveRoute(id);
       }
     }
     tempMqttRouteIds.current.clear();
-    mqttService.clearActiveRoutes();
   }, []);
 
   // Get user location for nearby mode and stops - only extract lat/lng to avoid spam from timestamp changes
@@ -564,7 +569,6 @@ const App = () => {
   );
 
   // Subscribe to MQTT for nearby routes when they change
-  const nearbyMqttRouteIds = useRef(new Set<string>());
   useEffect(() => {
     const permanentIds = new Set(subscribedRoutes.map((r) => r.gtfsId));
     const newIds = new Set(nearbyRouteIds);
