@@ -550,6 +550,38 @@ const App = () => {
   }, [nearbyMenuOpen]);
 
   // Nearby routes: routes from nearby stops that aren't already subscribed
+  const nearbyRouteDistanceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!nearbyStops) return map;
+    for (const stop of nearbyStops) {
+      for (const route of stop.routes) {
+        const existing = map.get(route.gtfsId);
+        if (existing === undefined || stop.distance < existing) {
+          map.set(route.gtfsId, stop.distance);
+        }
+      }
+    }
+    return map;
+  }, [nearbyStops]);
+
+  const sortedSubscribedRoutes = useMemo(() => {
+    return [...subscribedRoutes].sort((a, b) => {
+      const aDistance = nearbyRouteDistanceMap.get(a.gtfsId);
+      const bDistance = nearbyRouteDistanceMap.get(b.gtfsId);
+
+      if (aDistance !== undefined || bDistance !== undefined) {
+        if (aDistance === undefined) return 1;
+        if (bDistance === undefined) return -1;
+        if (aDistance !== bDistance) return aDistance - bDistance;
+      }
+
+      const aNum = parseInt(a.shortName, 10);
+      const bNum = parseInt(b.shortName, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return a.shortName.localeCompare(b.shortName);
+    });
+  }, [subscribedRoutes, nearbyRouteDistanceMap]);
+
   const nearbyRoutes = useMemo(() => {
     if (!nearbyStops || !showNearbyRoutes) return [];
     const routeMap = new Map<string, Route>();
@@ -562,12 +594,21 @@ const App = () => {
       }
     }
     return Array.from(routeMap.values()).sort((a, b) => {
+      const aDistance = nearbyRouteDistanceMap.get(a.gtfsId);
+      const bDistance = nearbyRouteDistanceMap.get(b.gtfsId);
+
+      if (aDistance !== undefined || bDistance !== undefined) {
+        if (aDistance === undefined) return 1;
+        if (bDistance === undefined) return -1;
+        if (aDistance !== bDistance) return aDistance - bDistance;
+      }
+
       const aNum = parseInt(a.shortName, 10);
       const bNum = parseInt(b.shortName, 10);
       if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
       return a.shortName.localeCompare(b.shortName);
     });
-  }, [nearbyStops, showNearbyRoutes, subscribedRoutes]);
+  }, [nearbyStops, showNearbyRoutes, subscribedRoutes, nearbyRouteDistanceMap]);
 
   // Fetch route patterns for subscribed routes + temporarily activated routes + nearby routes
   const nearbyRouteIds = useMemo(
@@ -759,7 +800,7 @@ const App = () => {
           ) : activeTab === 'routes' ? (
             <>
               <RoutesList
-                routes={subscribedRoutes}
+                routes={sortedSubscribedRoutes}
                 patterns={patterns}
                 onUnsubscribe={handleUnsubscribe}
                 onRouteClick={(route) => {
