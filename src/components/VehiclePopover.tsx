@@ -1,8 +1,8 @@
 import { memo, useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import type { TrackedVehicle } from '@/types';
-import { TRANSPORT_COLORS } from '@/types';
 import { useSubscriptionStore, useSettingsStore } from '@/stores';
+import { resolveRouteColor } from '@/lib';
 import { MPS_TO_KMPH, DELAY_LATE_THRESHOLD, DELAY_EARLY_THRESHOLD } from '@/constants';
 
 interface VehiclePopoverProps {
@@ -38,6 +38,7 @@ const formatLastUpdate = (lastUpdate: number, now: number): string => {
 const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe, isFollowing = true, onReFollow }: VehiclePopoverProps) => {
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const developerMode = useSettingsStore((state) => state.developerMode);
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
   const [now, setNow] = useState(Date.now());
 
   // Update time every second for "last update" display
@@ -51,10 +52,15 @@ const VehiclePopoverComponent = ({ vehicle, onClose, onSubscribe, onUnsubscribe,
       (r) => r.gtfsId === `HSL:${vehicle.routeId}` || r.shortName === vehicle.routeShortName
     );
     return {
-      color: subscribed?.color || TRANSPORT_COLORS[vehicle.mode] || TRANSPORT_COLORS.bus,
+      color: resolveRouteColor({
+        routeId: subscribed?.gtfsId ?? `HSL:${vehicle.routeId}`,
+        mode: vehicle.mode,
+        colorMode: routeColorMode,
+        isSubscribed: !!subscribed,
+      }),
       isSubscribed: !!subscribed,
     };
-  }, [subscribedRoutes, vehicle.routeId, vehicle.routeShortName, vehicle.mode]);
+  }, [subscribedRoutes, routeColorMode, vehicle.routeId, vehicle.routeShortName, vehicle.mode]);
 
   const delayClass =
     vehicle.delay > DELAY_LATE_THRESHOLD

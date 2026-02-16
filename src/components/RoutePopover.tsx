@@ -1,7 +1,8 @@
 import { memo, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { SubscribedRoute, RoutePattern, TrackedVehicle, Route } from '@/types';
-import { TRANSPORT_COLORS } from '@/types';
+import { useSettingsStore } from '@/stores';
+import { resolveRouteColor } from '@/lib';
 import { EARTH_RADIUS_M, KM_IN_METERS } from '@/constants';
 
 interface RoutePopoverProps {
@@ -47,7 +48,13 @@ const calculateRouteLength = (patterns: RoutePattern[]): number => {
 };
 
 const RoutePopoverComponent = ({ route, isSubscribed, patterns, vehicles, onClose, onSubscribe, onUnsubscribe, onBackToStop, onReCenter }: RoutePopoverProps) => {
-  const color = ('color' in route && route.color) || TRANSPORT_COLORS[route.mode ?? 'bus'] || TRANSPORT_COLORS.bus;
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
+  const color = resolveRouteColor({
+    routeId: route.gtfsId,
+    mode: route.mode ?? 'bus',
+    colorMode: routeColorMode,
+    isSubscribed,
+  });
 
   const stats = useMemo(() => {
     const routeLength = patterns && patterns.length > 0 ? calculateRouteLength(patterns) : 0;

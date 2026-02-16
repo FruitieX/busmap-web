@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Settings, MapStyle } from '@/types';
+import type { Settings, MapStyle, RouteColorMode } from '@/types';
 
 interface SettingsState extends Settings {
   setShowNearby: (show: boolean) => void;
@@ -12,7 +12,9 @@ interface SettingsState extends Settings {
   setShowRouteLines: (show: boolean) => void;
   setShowStops: (show: boolean) => void;
   setShowNearbyRoutes: (show: boolean) => void;
+  setRouteColorMode: (mode: RouteColorMode) => void;
   setAnimateVehicles: (animate: boolean) => void;
+  setShowVehicleTerminusLabel: (show: boolean) => void;
   setDeveloperMode: (enabled: boolean) => void;
   setSheetHeight: (height: number) => void;
   reset: () => void;
@@ -27,7 +29,9 @@ const defaultSettings: Settings = {
   showRouteLines: true,
   showStops: false,
   showNearbyRoutes: false,
+  routeColorMode: 'off',
   animateVehicles: true,
+  showVehicleTerminusLabel: false,
   developerMode: false,
   sheetHeight: 340,
 };
@@ -46,16 +50,18 @@ export const useSettingsStore = create<SettingsState>()(
       setShowRouteLines: (showRouteLines) => set({ showRouteLines }),
       setShowStops: (showStops) => set({ showStops }),
       setShowNearbyRoutes: (showNearbyRoutes) => set({ showNearbyRoutes }),
+      setRouteColorMode: (routeColorMode) => set({ routeColorMode }),
       setAnimateVehicles: (animateVehicles) => set({ animateVehicles }),
+      setShowVehicleTerminusLabel: (showVehicleTerminusLabel) => set({ showVehicleTerminusLabel }),
       setDeveloperMode: (developerMode) => set({ developerMode }),
       setSheetHeight: (sheetHeight) => set({ sheetHeight }),
       reset: () => set(defaultSettings),
     }),
     {
       name: 'busmap-settings',
-      version: 8,
+      version: 9,
       migrate: (persisted, version) => {
-        console.log(`[busmap] Migrating settings from version ${version} to 8`, persisted);
+        console.log(`[busmap] Migrating settings from version ${version} to 9`, persisted);
         const migrated = { ...defaultSettings, ...(persisted as object) };
         console.log('[busmap] Migrated settings:', migrated);
         return migrated;

@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useLocationStore, useVehicleStore, useSubscriptionStore, useSettingsStore, useStopStore, useSubscribedStopStore } from '@/stores';
 import { useAnimatedPosition } from './VehicleMarker';
 import { extrapolate, interpolateVehicle, pruneInterpolationStates } from '@/lib/interpolation';
+import { getVehicleTerminusLabel, resolveRouteColor } from '@/lib';
 import { VehiclePopover } from './VehiclePopover';
 import { RoutePopover } from './RoutePopover';
 import { StopPopover } from './StopPopover';
@@ -150,6 +151,7 @@ const routeLineStyle: LineLayerSpecification = {
     'line-dasharray': [2, 2],
   },
   layout: {
+    'line-sort-key': ['get', 'sortKey'],
     'line-cap': 'round',
     'line-join': 'round',
   },
@@ -207,6 +209,28 @@ const vehicleMarkerStyle: SymbolLayerSpecification = {
   },
 };
 
+const vehicleTerminusStyle: SymbolLayerSpecification = {
+  id: 'vehicle-terminus-labels',
+  type: 'symbol',
+  source: 'vehicle-terminus',
+  layout: {
+    'text-field': ['get', 'terminusLabel'],
+    'text-font': ['literal', ['Open Sans Semibold', 'Arial Unicode MS Regular']],
+    'text-size': ['get', 'terminusTextSize'],
+    'text-anchor': 'top',
+    'text-radial-offset': ['get', 'terminusOffsetEm'],
+    'text-allow-overlap': true,
+    'text-ignore-placement': true,
+    'symbol-sort-key': ['get', 'sortKey'],
+  },
+  paint: {
+    'text-color': '#f9fafb',
+    'text-halo-color': 'rgba(0,0,0,0.7)',
+    'text-halo-width': 1.4,
+    'text-opacity': ['get', 'opacity'],
+  },
+};
+
 interface VehicleFeatureProps {
   vehicleId: string;
   color: string;
@@ -221,6 +245,19 @@ interface VehicleFeatureProps {
   sortKey: number;
   routeShortName: string;
   textSize: number;
+  terminusLabel: string;
+  showTerminus: boolean;
+  terminusTextSize: number;
+  terminusOffsetEm: number;
+}
+
+interface VehicleTerminusFeatureProps {
+  vehicleId: string;
+  terminusLabel: string;
+  opacity: number;
+  sortKey: number;
+  terminusTextSize: number;
+  terminusOffsetEm: number;
 }
 
 // Generate a GeoJSON circle polygon (for flat rendering on 3D tilted maps)
@@ -286,6 +323,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const showRouteLines = useSettingsStore((state) => state.showRouteLines);
   const showStops = useSettingsStore((state) => state.showStops);
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
+  const showVehicleTerminusLabel = useSettingsStore((state) => state.showVehicleTerminusLabel);
   const mapStyleUrl = useSettingsStore((state) => MAP_STYLES[state.mapStyle].url);
 
   // Stop store
@@ -312,21 +351,30 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     return ids;
   }, [subscribedRoutes]);
 
-  // Map from route to color for quick lookup
-  const routeColorMap = useMemo(() => {
-    const colorMap: Record<string, string> = {};
-    for (const r of subscribedRoutes) {
-      colorMap[r.gtfsId] = r.color;
-      colorMap[r.shortName] = r.color;
-    }
-    return colorMap;
-  }, [subscribedRoutes]);
-
   // Vehicle GeoJSON for WebGL layer - updated by rAF loop
   const [vehicleGeoJson, setVehicleGeoJson] = useState<FeatureCollection<Point, VehicleFeatureProps>>({
     type: 'FeatureCollection',
     features: [],
   });
+  const vehicleTerminusGeoJson = useMemo((): FeatureCollection<Point, VehicleTerminusFeatureProps> => {
+    return {
+      type: 'FeatureCollection',
+      features: vehicleGeoJson.features
+        .filter((feature) => feature.properties.showTerminus)
+        .map((feature) => ({
+          type: 'Feature',
+          properties: {
+            vehicleId: feature.properties.vehicleId,
+            terminusLabel: feature.properties.terminusLabel,
+            opacity: feature.properties.opacity,
+            sortKey: feature.properties.sortKey,
+            terminusTextSize: feature.properties.terminusTextSize,
+            terminusOffsetEm: feature.properties.terminusOffsetEm,
+          },
+          geometry: feature.geometry,
+        })),
+    };
+  }, [vehicleGeoJson]);
 
   // Animate vehicles with a single shared rAF loop
   const animateVehicles = useSettingsStore((state) => state.animateVehicles);
@@ -478,10 +526,12 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         // Determine color
         const isSubscribed = subscribedRouteIds.has(`HSL:${vehicle.routeId}`) || subscribedRouteIds.has(vehicle.routeShortName);
         const isSelected = vehicle.vehicleId === currentSelectedId;
-        const color = routeColorMap[`HSL:${vehicle.routeId}`] 
-          ?? routeColorMap[vehicle.routeShortName] 
-          ?? TRANSPORT_COLORS[vehicle.mode] 
-          ?? TRANSPORT_COLORS.bus;
+        const color = resolveRouteColor({
+          routeId: `HSL:${vehicle.routeId}`,
+          mode: vehicle.mode,
+          colorMode: routeColorMode,
+          isSubscribed,
+        });
 
         // Sort key: selected vehicle on top, then by latitude (north = back)
         // Higher sortKey = drawn later = on top
@@ -540,6 +590,11 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
         const labelScale = textLen === 1 ? 1.2 : textLen === 2 ? 1.0 : textLen === 3 ? 0.85 : 0.7;
         const textSize = Math.round(circleRadius * 2 * 0.536 * labelScale);
 
+        const terminusLabel = getVehicleTerminusLabel(vehicle.headsign);
+        const showTerminus = showVehicleTerminusLabel && terminusLabel.length > 0;
+        const terminusTextSize = Math.max(2, Math.round(circleRadius * 0.8));
+        const terminusOffsetEm = (circleRadius * 1.8) / Math.max(terminusTextSize, 1);
+
         features.push({
           type: 'Feature',
           properties: {
@@ -556,6 +611,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             sortKey,
             routeShortName: vehicle.routeShortName,
             textSize,
+            terminusLabel,
+            showTerminus,
+            terminusTextSize,
+            terminusOffsetEm,
           },
           geometry: {
             type: 'Point',
@@ -570,7 +629,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [animateVehicles, subscribedRouteIds, routeColorMap]);
+  }, [animateVehicles, routeColorMode, showVehicleTerminusLabel, subscribedRouteIds]);
 
   // Animation state refs - declared here before effects that use them
   const isAnimatingRef = useRef(false);
@@ -853,9 +912,15 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           type: 'Feature',
           properties: {
             routeId: route.gtfsId,
-            color: route.color,
+            color: resolveRouteColor({
+              routeId: route.gtfsId,
+              mode: route.mode,
+              colorMode: routeColorMode,
+              isSubscribed: true,
+            }),
             isSelected,
             opacity,
+            sortKey: isSelected ? 3 : 2,
           },
           geometry: {
             type: 'LineString',
@@ -893,19 +958,26 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       } else if (selectedStopRouteIds.size > 0) {
         opacity = selectedStopRouteIds.has(routeId) ? 1 : 0.1;
       }
-      // Resolve color from nearby stops, activated route, or default
-      let color = TRANSPORT_COLORS.bus;
+      // Resolve route mode from activated route, nearby stops, or fallback
+      let mode: Route['mode'] = 'bus';
       if (activatedRoute && routeId === activatedRoute.gtfsId && activatedRoute.mode) {
-        color = TRANSPORT_COLORS[activatedRoute.mode] ?? TRANSPORT_COLORS.bus;
+        mode = activatedRoute.mode;
       } else if (nearbyStops) {
         for (const stop of nearbyStops) {
           const sr = stop.routes.find((r) => r.gtfsId === routeId);
           if (sr) {
-            color = TRANSPORT_COLORS[sr.mode] ?? TRANSPORT_COLORS.bus;
+            mode = sr.mode;
             break;
           }
         }
       }
+
+      const color = resolveRouteColor({
+        routeId,
+        mode,
+        colorMode: routeColorMode,
+        isSubscribed: false,
+      });
 
       for (const pattern of routePatterns) {
         if (pattern.geometry.length < 2) continue;
@@ -917,6 +989,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
             color,
             isSelected,
             opacity,
+            sortKey: isSelected ? 3 : 1,
           },
           geometry: {
             type: 'LineString',
@@ -927,7 +1000,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
     }
 
     return { type: 'FeatureCollection', features };
-  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId, selectedStopRouteIds, nearbyStops, nearbyRouteIds, activatedRoute]);
+  }, [patterns, subscribedRoutes, showRouteLines, selectedRouteId, selectedStopRouteIds, nearbyStops, nearbyRouteIds, activatedRoute, routeColorMode]);
 
   // Build GeoJSON for stop markers
   // Always show the selected stop and subscribed stops, even if showStops is off
@@ -1364,6 +1437,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       </Source>
 
       {/* Vehicle markers */}
+      <Source id="vehicle-terminus" type="geojson" data={vehicleTerminusGeoJson}>
+        <Layer {...vehicleTerminusStyle} />
+      </Source>
+
       {/* WebGL layers for all vehicles (including selected) */}
       <Source id="vehicles" type="geojson" data={vehicleGeoJson}>
         <Layer {...vehiclePingStyle} />

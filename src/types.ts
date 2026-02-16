@@ -1,6 +1,8 @@
 // Transport modes supported by HSL
 export type TransportMode = 'bus' | 'tram' | 'train' | 'ferry' | 'metro' | 'ubus' | 'robot';
 
+export type RouteColorMode = 'off' | 'favorites' | 'all';
+
 // Color mapping for transport modes
 export const TRANSPORT_COLORS: Record<TransportMode, string> = {
   bus: '#007ac9',
@@ -176,7 +178,9 @@ export interface Settings {
   showRouteLines: boolean;
   showStops: boolean;
   showNearbyRoutes: boolean;
+  routeColorMode: RouteColorMode;
   animateVehicles: boolean;
+  showVehicleTerminusLabel: boolean;
   developerMode: boolean;
   sheetHeight: number; // persisted bottom sheet height
 }

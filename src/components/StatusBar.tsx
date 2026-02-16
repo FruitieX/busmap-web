@@ -1,7 +1,7 @@
 import { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useVehicleStore, useSubscriptionStore, useSubscribedStopStore } from '@/stores';
-import { useRoutes, getStopTermini } from '@/lib';
+import { useVehicleStore, useSubscriptionStore, useSubscribedStopStore, useSettingsStore } from '@/stores';
+import { useRoutes, getStopTermini, resolveRouteColor } from '@/lib';
 import type { Route, TransportMode, Stop, StopRoute } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { StarToggleButton } from './StarToggleButton';
@@ -62,6 +62,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
   });
   const subscribedCount = useSubscriptionStore((state) => state.subscribedRoutes.length);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
   const hasExtraVehicles = totalVehicleCount > subscribedVehicleCount;
   const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
 
@@ -504,7 +505,12 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
                     if (item.kind === 'route') {
                       const { route } = item;
                       const subscribed = isSubscribed(route);
-                      const color = TRANSPORT_COLORS[route.mode || 'bus'];
+                      const color = resolveRouteColor({
+                        routeId: route.gtfsId,
+                        mode: route.mode ?? 'bus',
+                        colorMode: routeColorMode,
+                        isSubscribed: subscribed,
+                      });
                       return (
                         <div
                           key={route.gtfsId}

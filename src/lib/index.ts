@@ -4,4 +4,4 @@ export type { StopTimetableResult } from './api';
 export { useRoutes, useRoutePatterns, useNearbyStops, useStopTimetable } from './hooks';
 export { extrapolate, interpolateVehicle, pruneInterpolationStates } from './interpolation';
 export type { InterpolatedPosition } from './interpolation';
-export { getStopTermini, haversineDistance } from './utils';
+export { getStopTermini, getUniqueRouteColor, getVehicleTerminusLabel, haversineDistance, resolveRouteColor } from './utils';

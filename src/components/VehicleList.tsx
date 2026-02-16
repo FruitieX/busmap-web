@@ -1,8 +1,8 @@
 import { memo, useMemo, useCallback } from 'react';
 import type { TrackedVehicle } from '@/types';
-import { TRANSPORT_COLORS } from '@/types';
-import { useVehicleStore, useSubscriptionStore, useLocationStore } from '@/stores';
+import { useVehicleStore, useSubscriptionStore, useLocationStore, useSettingsStore } from '@/stores';
 import { StarToggleButton } from './StarToggleButton';
+import { resolveRouteColor } from '@/lib';
 import {
   EARTH_RADIUS_M,
   MPS_TO_KMPH,
@@ -68,10 +68,16 @@ const calculateDistance = (
 const VehicleCard = memo(
   ({ vehicle, distance, isSubscribed, isSelected, onCardClick, onSubscriptionToggle }: VehicleCardProps) => {
     const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
+    const routeColorMode = useSettingsStore((state) => state.routeColorMode);
     const subscribed = subscribedRoutes.find(
       (r) => r.gtfsId === `HSL:${vehicle.routeId}` || r.shortName === vehicle.routeShortName
     );
-    const color = subscribed?.color || TRANSPORT_COLORS[vehicle.mode] || TRANSPORT_COLORS.bus;
+    const color = resolveRouteColor({
+      routeId: subscribed?.gtfsId ?? `HSL:${vehicle.routeId}`,
+      mode: vehicle.mode,
+      colorMode: routeColorMode,
+      isSubscribed,
+    });
 
     const delayClass =
       vehicle.delay > DELAY_LATE_THRESHOLD

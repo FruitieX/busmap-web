@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSettingsStore, useSubscriptionStore, useSubscribedStopStore } from '@/stores';
 import { MAP_STYLES } from '@/types';
-import type { MapStyle } from '@/types';
+import type { MapStyle, RouteColorMode } from '@/types';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -64,8 +64,12 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setShowStops,
     showNearbyRoutes,
     setShowNearbyRoutes,
+    routeColorMode,
+    setRouteColorMode,
     animateVehicles,
     setAnimateVehicles,
+    showVehicleTerminusLabel,
+    setShowVehicleTerminusLabel,
     developerMode,
     setDeveloperMode,
   } = useSettingsStore();
@@ -309,6 +313,20 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                     />
                   </label>
 
+                  {/* Route color mode */}
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-gray-700 dark:text-gray-200">Route colors</span>
+                    <select
+                      value={routeColorMode}
+                      onChange={(e) => setRouteColorMode(e.target.value as RouteColorMode)}
+                      className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="off">Off (by mode)</option>
+                      <option value="favorites">Favorited only</option>
+                      <option value="all">All routes</option>
+                    </select>
+                  </div>
+
                   {/* Animate vehicles */}
                   <label className="flex items-center justify-between cursor-pointer">
                     <span className="text-gray-700 dark:text-gray-200">Animate vehicles</span>
@@ -316,6 +334,22 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       type="checkbox"
                       checked={animateVehicles}
                       onChange={(e) => setAnimateVehicles(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+
+                  {/* Show vehicle destination label */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-200">Show destination labels</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Show vehicle terminus under map markers
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showVehicleTerminusLabel}
+                      onChange={(e) => setShowVehicleTerminusLabel(e.target.checked)}
                       className="w-5 h-5 accent-primary-500"
                     />
                   </label>

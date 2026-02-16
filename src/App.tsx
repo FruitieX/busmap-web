@@ -21,9 +21,8 @@ import {
   requestUserLocation,
   watchUserLocation,
 } from '@/stores';
-import { mqttService, useRoutePatterns, useNearbyStops } from '@/lib';
+import { mqttService, resolveRouteColor, useRoutePatterns, useNearbyStops } from '@/lib';
 import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, RoutePattern, Stop, StopDeparture } from '@/types';
-import { TRANSPORT_COLORS } from '@/types';
 import {
   SHEET_MIN_HEIGHT,
   SHEET_MAX_HEIGHT,
@@ -119,6 +118,7 @@ const App = () => {
   const setShowStops = useSettingsStore((state) => state.setShowStops);
   const showNearbyRoutes = useSettingsStore((state) => state.showNearbyRoutes);
   const setShowNearbyRoutes = useSettingsStore((state) => state.setShowNearbyRoutes);
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
 
   // Debounce nearby radius changes (wait 500ms after user stops sliding)
   const [debouncedRadius, setDebouncedRadius] = useState(nearbyRadius);
@@ -777,7 +777,12 @@ const App = () => {
                   <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">Nearby Routes</h3>
                   <div className="space-y-2 px-0.5">
                     {nearbyRoutes.map((route) => {
-                      const color = TRANSPORT_COLORS[route.mode ?? 'bus'] ?? TRANSPORT_COLORS.bus;
+                      const color = resolveRouteColor({
+                        routeId: route.gtfsId,
+                        mode: route.mode ?? 'bus',
+                        colorMode: routeColorMode,
+                        isSubscribed: false,
+                      });
                       const isActive = selectedRouteId === route.gtfsId;
                       return (
                         <div
@@ -848,6 +853,8 @@ interface RoutesListProps {
 }
 
 const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRouteId, hasNearbyRoutes }: RoutesListProps) => {
+  const routeColorMode = useSettingsStore((state) => state.routeColorMode);
+
   if (routes.length === 0 && !hasNearbyRoutes) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -873,7 +880,12 @@ const RoutesList = ({ routes, patterns, onUnsubscribe, onRouteClick, selectedRou
     <div className="space-y-2 px-0.5 py-0.5">
       <AnimatePresence mode="popLayout" initial={false}>
         {routes.map((route) => {
-          const color = route.color || TRANSPORT_COLORS[route.mode] || TRANSPORT_COLORS.bus;
+          const color = resolveRouteColor({
+            routeId: route.gtfsId,
+            mode: route.mode,
+            colorMode: routeColorMode,
+            isSubscribed: true,
+          });
           const isSelected = selectedRouteId === route.gtfsId;
           const routePatterns = patterns?.get(route.gtfsId);
           const vehicleCount = routePatterns?.reduce((acc, p) => acc + (p.geometry.length > 0 ? 1 : 0), 0) || 0;
