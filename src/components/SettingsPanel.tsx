@@ -48,10 +48,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
   }, [isOpen, onClose]);
 
   const {
-    showNearby,
-    toggleNearby,
-    nearbyRadius,
-    setNearbyRadius,
     locationRadius,
     setLocationRadius,
     theme,
@@ -60,10 +56,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setMapStyle,
     showRouteLines,
     setShowRouteLines,
-    showStops,
-    setShowStops,
-    showNearbyRoutes,
-    setShowNearbyRoutes,
     routeColorMode,
     setRouteColorMode,
     animateVehicles,
@@ -81,6 +73,14 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
   const totalSavedCount = subscribedCount + subscribedStopCount;
 
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'up-to-date'>('idle');
+
+  const handleClearAllSavedData = useCallback(() => {
+    if (totalSavedCount === 0) return;
+    const confirmed = window.confirm('Clear all saved routes and stops? This cannot be undone.');
+    if (!confirmed) return;
+    clearAllSubscriptions();
+    clearAllStops();
+  }, [clearAllSubscriptions, clearAllStops, totalSavedCount]);
 
   const checkForUpdates = useCallback(async () => {
     setUpdateStatus('checking');
@@ -181,93 +181,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {/* Nearby Mode */}
-              <section>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Nearby Mode
-                </h3>
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Show nearby vehicles</span>
-                    <input
-                      type="checkbox"
-                      checked={showNearby}
-                      onChange={toggleNearby}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Show nearby routes</span>
-                    <input
-                      type="checkbox"
-                      checked={showNearbyRoutes}
-                      onChange={(e) => setShowNearbyRoutes(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Show nearby stops</span>
-                    <input
-                      type="checkbox"
-                      checked={showStops}
-                      onChange={(e) => setShowStops(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-                </div>
-              </section>
-
-              {/* Nearby Radius (show when any nearby mode is active) */}
-              {(showNearby || showNearbyRoutes || showStops) && (
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                    Nearby Radius
-                  </h3>
-                  <div className="space-y-3">
-                    <input
-                      type="range"
-                      min="250"
-                      max="4000"
-                      step="250"
-                      value={nearbyRadius}
-                      onChange={(e) => setNearbyRadius(Number(e.target.value))}
-                      className="w-full accent-primary-500"
-                    />
-                    <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-                      {nearbyRadius < 1000
-                        ? `${nearbyRadius} meters`
-                        : `${(nearbyRadius / 1000).toFixed(1)} km`}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Location Zoom Radius */}
-              <section>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Location Zoom Radius
-                </h3>
-                <div className="space-y-3">
-                  <input
-                    type="range"
-                    min="250"
-                    max="4000"
-                    step="250"
-                    value={locationRadius}
-                    onChange={(e) => setLocationRadius(Number(e.target.value))}
-                    className="w-full accent-primary-500"
-                  />
-                  <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-                    {locationRadius < 1000
-                      ? `${locationRadius} meters`
-                      : `${(locationRadius / 1000).toFixed(1)} km`}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                    Visible area on startup and when pressing &quot;Go to my location&quot;
-                  </div>
-                </div>
-              </section>
-
               {/* Appearance */}
               <section>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
@@ -302,17 +215,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                     </select>
                   </div>
 
-                  {/* Show route lines */}
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Show route lines</span>
-                    <input
-                      type="checkbox"
-                      checked={showRouteLines}
-                      onChange={(e) => setShowRouteLines(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-
                   {/* Route color mode */}
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-gray-700 dark:text-gray-200">Route colors</span>
@@ -326,6 +228,17 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       <option value="all">All routes</option>
                     </select>
                   </div>
+
+                  {/* Show route lines */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-700 dark:text-gray-200">Show route lines</span>
+                    <input
+                      type="checkbox"
+                      checked={showRouteLines}
+                      onChange={(e) => setShowRouteLines(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
 
                   {/* Animate vehicles */}
                   <label className="flex items-center justify-between cursor-pointer">
@@ -356,39 +269,60 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                 </div>
               </section>
 
-              {/* Data */}
+              {/* Location Zoom Radius */}
               <section>
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Data
+                  Location Zoom Radius
                 </h3>
-                <button
-                  className="w-full p-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
-                  onClick={() => { clearAllSubscriptions(); clearAllStops(); }}
-                  disabled={totalSavedCount === 0}
-                >
-                  Clear all saved data ({totalSavedCount})
-                </button>
+                <div className="space-y-3">
+                  <input
+                    type="range"
+                    min="250"
+                    max="4000"
+                    step="250"
+                    value={locationRadius}
+                    onChange={(e) => setLocationRadius(Number(e.target.value))}
+                    className="w-full accent-primary-500"
+                  />
+                  <div className="text-center text-sm text-gray-600 dark:text-gray-300">
+                    {locationRadius < 1000
+                      ? `${locationRadius} meters`
+                      : `${(locationRadius / 1000).toFixed(1)} km`}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    Visible area on startup and when pressing &quot;Go to my location&quot;
+                  </div>
+                </div>
               </section>
 
-              {/* Advanced */}
+              {/* Data */}
               <section>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Advanced
-                </h3>
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-gray-700 dark:text-gray-200">Developer mode</span>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Show extra vehicle details in popovers
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                    Data
+                  </h3>
+                  <button
+                    className="w-full p-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+                    onClick={handleClearAllSavedData}
+                    disabled={totalSavedCount === 0}
+                  >
+                    Clear all saved data ({totalSavedCount})
+                  </button>
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-200">Developer mode</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Show extra vehicle details in popovers
+                      </div>
                     </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={developerMode}
-                    onChange={(e) => setDeveloperMode(e.target.checked)}
-                    className="w-5 h-5 accent-primary-500"
-                  />
-                </label>
+                    <input
+                      type="checkbox"
+                      checked={developerMode}
+                      onChange={(e) => setDeveloperMode(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+                </div>
               </section>
 
               {/* About */}

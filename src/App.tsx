@@ -113,12 +113,14 @@ const App = () => {
 
   const showNearby = useSettingsStore((state) => state.showNearby);
   const nearbyRadius = useSettingsStore((state) => state.nearbyRadius);
+  const setNearbyRadius = useSettingsStore((state) => state.setNearbyRadius);
   const setShowNearby = useSettingsStore((state) => state.setShowNearby);
   const showStops = useSettingsStore((state) => state.showStops);
   const setShowStops = useSettingsStore((state) => state.setShowStops);
   const showNearbyRoutes = useSettingsStore((state) => state.showNearbyRoutes);
   const setShowNearbyRoutes = useSettingsStore((state) => state.setShowNearbyRoutes);
   const routeColorMode = useSettingsStore((state) => state.routeColorMode);
+  const anyNearbyActive = showNearby || showNearbyRoutes || showStops;
 
   // Debounce nearby radius changes (wait 500ms after user stops sliding)
   const [debouncedRadius, setDebouncedRadius] = useState(nearbyRadius);
@@ -192,9 +194,16 @@ const App = () => {
   );
 
   // Filter nearby stops by the user-configured radius
-  const nearbyStops = useMemo(
+  const nearbyStopsWithinRadius = useMemo(
     () => allNearbyStops?.filter((s) => s.distance <= nearbyRadius),
     [allNearbyStops, nearbyRadius],
+  );
+
+  // When nearby modes are disabled, keep using unfiltered nearby stops so radius
+  // tweaks don't reorder unrelated route/search lists.
+  const nearbyStopsForUi = useMemo(
+    () => (anyNearbyActive ? nearbyStopsWithinRadius : allNearbyStops),
+    [anyNearbyActive, nearbyStopsWithinRadius, allNearbyStops],
   );
 
   // Apply theme
@@ -515,9 +524,6 @@ const App = () => {
     [handleVehicleDeselect],
   );
 
-  // Per-tab nearby toggle value and handler
-  const anyNearbyActive = showNearby || showNearbyRoutes || showStops;
-
   // Close nearby menu when clicking outside, and keep position up-to-date while open
   useEffect(() => {
     if (!nearbyMenuOpen) return;
@@ -527,7 +533,7 @@ const App = () => {
       if (!nearbyBtnRef.current) return;
       const rect = nearbyBtnRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const above = spaceBelow < 160;
+      const above = spaceBelow < 280;
       setNearbyMenuRect({
         top: above ? rect.top : rect.bottom + 4,
         right: window.innerWidth - rect.right,
@@ -552,8 +558,8 @@ const App = () => {
   // Nearby routes: routes from nearby stops that aren't already subscribed
   const nearbyRouteDistanceMap = useMemo(() => {
     const map = new Map<string, number>();
-    if (!nearbyStops) return map;
-    for (const stop of nearbyStops) {
+    if (!showNearbyRoutes || !nearbyStopsWithinRadius) return map;
+    for (const stop of nearbyStopsWithinRadius) {
       for (const route of stop.routes) {
         const existing = map.get(route.gtfsId);
         if (existing === undefined || stop.distance < existing) {
@@ -562,7 +568,7 @@ const App = () => {
       }
     }
     return map;
-  }, [nearbyStops]);
+  }, [showNearbyRoutes, nearbyStopsWithinRadius]);
 
   const sortedSubscribedRoutes = useMemo(() => {
     return [...subscribedRoutes].sort((a, b) => {
@@ -583,10 +589,10 @@ const App = () => {
   }, [subscribedRoutes, nearbyRouteDistanceMap]);
 
   const nearbyRoutes = useMemo(() => {
-    if (!nearbyStops || !showNearbyRoutes) return [];
+    if (!nearbyStopsWithinRadius || !showNearbyRoutes) return [];
     const routeMap = new Map<string, Route>();
     const subscribedIds = new Set(subscribedRoutes.map((r) => r.gtfsId));
-    for (const stop of nearbyStops) {
+    for (const stop of nearbyStopsWithinRadius) {
       for (const r of stop.routes) {
         if (!routeMap.has(r.gtfsId) && !subscribedIds.has(r.gtfsId)) {
           routeMap.set(r.gtfsId, { gtfsId: r.gtfsId, shortName: r.shortName, longName: r.longName, mode: r.mode });
@@ -608,7 +614,7 @@ const App = () => {
       if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
       return a.shortName.localeCompare(b.shortName);
     });
-  }, [nearbyStops, showNearbyRoutes, subscribedRoutes, nearbyRouteDistanceMap]);
+  }, [nearbyStopsWithinRadius, showNearbyRoutes, subscribedRoutes, nearbyRouteDistanceMap]);
 
   // Fetch route patterns for subscribed routes + temporarily activated routes + nearby routes
   const nearbyRouteIds = useMemo(
@@ -666,7 +672,7 @@ const App = () => {
         activatedRoute={activatedRoute}
         onRouteSelect={clearRouteSelection}
         bottomPadding={sheetHeight}
-        nearbyStops={nearbyStops}
+        nearbyStops={nearbyStopsWithinRadius}
         onStopClick={handleStopClick}
         onStopDeselect={handleStopBack}
         onVehicleDeselect={handleVehicleDeselect}
@@ -676,7 +682,7 @@ const App = () => {
       />
 
       {/* Status bar with search */}
-      <StatusBar onActivateRoute={handleActivateRoute} onToggleRouteSubscription={handleSelectRoute} nearbyStops={nearbyStops} onStopClick={handleStopClick} />
+      <StatusBar onActivateRoute={handleActivateRoute} onToggleRouteSubscription={handleSelectRoute} nearbyStops={nearbyStopsForUi} onStopClick={handleStopClick} />
 
       {/* FABs - bottom right, move with bottom sheet */}
       <motion.div
@@ -760,7 +766,7 @@ const App = () => {
               </button>
               {nearbyMenuOpen && nearbyMenuRect && (
                 <div
-                  className="fixed w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
+                  className="fixed w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50"
                   style={nearbyMenuRect.above
                     ? { bottom: window.innerHeight - nearbyMenuRect.top + 4, right: nearbyMenuRect.right }
                     : { top: nearbyMenuRect.top, right: nearbyMenuRect.right }
@@ -777,6 +783,25 @@ const App = () => {
                     <span className="text-sm text-gray-700 dark:text-gray-200">Stops</span>
                     <input type="checkbox" checked={showStops} onChange={(e) => setShowStops(e.target.checked)} className="w-4 h-4 accent-primary-500" />
                   </label>
+                  <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                      Radius
+                    </div>
+                    <input
+                      type="range"
+                      min="250"
+                      max="4000"
+                      step="250"
+                      value={nearbyRadius}
+                      onChange={(e) => setNearbyRadius(Number(e.target.value))}
+                      className="w-full accent-primary-500"
+                    />
+                    <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 text-center">
+                      {nearbyRadius < 1000
+                        ? `${nearbyRadius} m`
+                        : `${(nearbyRadius / 1000).toFixed(1)} km`}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -866,7 +891,7 @@ const App = () => {
             />
           ) : (
             <NearbyStops
-              stops={nearbyStops ?? []}
+              stops={nearbyStopsForUi ?? []}
               isLoading={stopsLoading}
               onStopClick={handleStopClick}
             />

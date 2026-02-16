@@ -63,6 +63,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
   const subscribedCount = useSubscriptionStore((state) => state.subscribedRoutes.length);
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const routeColorMode = useSettingsStore((state) => state.routeColorMode);
+  const showNearbyRoutes = useSettingsStore((state) => state.showNearbyRoutes);
   const hasExtraVehicles = totalVehicleCount > subscribedVehicleCount;
   const { subscribeToStop, unsubscribeFromStop, isStopSubscribed } = useSubscribedStopStore();
 
@@ -83,7 +84,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
   // Build route → minimum distance map from nearby stops
   const routeDistanceMap = useMemo(() => {
     const map = new Map<string, number>();
-    if (!nearbyStops) return map;
+    if (!showNearbyRoutes || !nearbyStops) return map;
     for (const stop of nearbyStops) {
       for (const route of stop.routes as StopRoute[]) {
         const existing = map.get(route.gtfsId);
@@ -93,7 +94,7 @@ const StatusBarComponent = ({ onActivateRoute, onToggleRouteSubscription, nearby
       }
     }
     return map;
-  }, [nearbyStops]);
+  }, [showNearbyRoutes, nearbyStops]);
 
   const toggleFilter = useCallback((filter: TransportMode | 'stops') => {
     setActiveFilters((prev) => {
