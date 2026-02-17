@@ -173,6 +173,7 @@ export interface Settings {
   showNearby: boolean;
   nearbyRadius: number; // meters
   locationRadius: number; // meters, converted to zoom level for map
+  markerSizeLevel: 1 | 2 | 3 | 4 | 5;
   theme: 'light' | 'dark' | 'system';
   mapStyle: MapStyle;
   showRouteLines: boolean;

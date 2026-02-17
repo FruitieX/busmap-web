@@ -7,6 +7,7 @@ interface SettingsState extends Settings {
   toggleNearby: () => void;
   setNearbyRadius: (radius: number) => void;
   setLocationRadius: (radius: number) => void;
+  setMarkerSizeLevel: (level: 1 | 2 | 3 | 4 | 5) => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   setMapStyle: (style: MapStyle) => void;
   setShowRouteLines: (show: boolean) => void;
@@ -24,6 +25,7 @@ const defaultSettings: Settings = {
   showNearby: false,
   nearbyRadius: 1000,
   locationRadius: 1000,
+  markerSizeLevel: 3,
   theme: 'system',
   mapStyle: 'voyager',
   showRouteLines: true,
@@ -31,7 +33,7 @@ const defaultSettings: Settings = {
   showNearbyRoutes: false,
   routeColorMode: 'off',
   animateVehicles: true,
-  showVehicleTerminusLabel: false,
+  showVehicleTerminusLabel: true,
   developerMode: false,
   sheetHeight: 340,
 };
@@ -45,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleNearby: () => set((state) => ({ showNearby: !state.showNearby })),
       setNearbyRadius: (nearbyRadius) => set({ nearbyRadius }),
       setLocationRadius: (locationRadius) => set({ locationRadius }),
+      setMarkerSizeLevel: (markerSizeLevel) => set({ markerSizeLevel }),
       setTheme: (theme) => set({ theme }),
       setMapStyle: (mapStyle) => set({ mapStyle }),
       setShowRouteLines: (showRouteLines) => set({ showRouteLines }),
@@ -59,9 +62,9 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'busmap-settings',
-      version: 9,
+      version: 10,
       migrate: (persisted, version) => {
-        console.log(`[busmap] Migrating settings from version ${version} to 9`, persisted);
+        console.log(`[busmap] Migrating settings from version ${version} to 10`, persisted);
         const migrated = { ...defaultSettings, ...(persisted as object) };
         console.log('[busmap] Migrated settings:', migrated);
         return migrated;

@@ -12,7 +12,7 @@ import { StopPopover } from './StopPopover';
 import type { TrackedVehicle, RoutePattern, Route, Stop } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import type { FeatureCollection, LineString, Polygon, Point, Feature } from 'geojson';
-import { TOP_BAR_HEIGHT, getVehicleTiming } from '@/constants';
+import { TOP_BAR_HEIGHT, getVehicleTiming, getMarkerSizeScale } from '@/constants';
 
 import { MAP_STYLES } from '@/types';
 
@@ -292,12 +292,14 @@ const SelectedVehiclePopover = memo(({ vehicle, onClose, onSubscribe, onUnsubscr
   onReFollow: () => void;
 }) => {
   const pos = useAnimatedPosition(vehicle);
+  const markerSizeLevel = useSettingsStore((state) => state.markerSizeLevel);
+  const markerSizeScale = getMarkerSizeScale(markerSizeLevel);
   return (
     <Marker
       longitude={pos.lng}
       latitude={pos.lat}
       anchor="bottom"
-      offset={[0, -25]} // Offset upward to avoid obscuring vehicle marker and heading arrow
+      offset={[0, -Math.round(25 * markerSizeScale)]}
       style={{ zIndex: 10 }}
     >
       <VehiclePopover
@@ -325,7 +327,9 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
   const showStops = useSettingsStore((state) => state.showStops);
   const routeColorMode = useSettingsStore((state) => state.routeColorMode);
   const showVehicleTerminusLabel = useSettingsStore((state) => state.showVehicleTerminusLabel);
+  const markerSizeLevel = useSettingsStore((state) => state.markerSizeLevel);
   const mapStyleUrl = useSettingsStore((state) => MAP_STYLES[state.mapStyle].url);
+  const markerSizeScale = getMarkerSizeScale(markerSizeLevel);
 
   // Stop store
   const selectedStop = useStopStore((state) => state.selectedStop);
@@ -455,7 +459,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
       const zoom = mapRef.current?.getMap()?.getZoom() ?? 14;
       // Scale factor: 1.0 at zoom 14, smaller when zoomed out, capped when zoomed in
       const zoomScale = Math.min(1.0, Math.pow(2, (zoom - 15) * 0.3));
-      const baseRadius = 14 * zoomScale;
+      const baseRadius = 14 * zoomScale * markerSizeScale;
       const selectedScale = 18 / 14; // Ratio of selected to base radius
 
       // Periodically prune stale interpolation states to avoid memory leaks
@@ -629,7 +633,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [animateVehicles, routeColorMode, showVehicleTerminusLabel, subscribedRouteIds]);
+  }, [animateVehicles, routeColorMode, showVehicleTerminusLabel, subscribedRouteIds, markerSizeScale]);
 
   // Animation state refs - declared here before effects that use them
   const isAnimatingRef = useRef(false);
@@ -1403,10 +1407,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           paint={{
             'circle-radius': [
               'interpolate', ['linear'], ['zoom'],
-              10, 10,
-              13, 14,
-              15, 18,
-              18, 22,
+              10, 10 * markerSizeScale,
+              13, 14 * markerSizeScale,
+              15, 18 * markerSizeScale,
+              18, 22 * markerSizeScale,
             ],
             'circle-color': 'transparent',
           }}
@@ -1417,17 +1421,17 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
           paint={{
             'circle-radius': [
               'interpolate', ['linear'], ['zoom'],
-              10, ['case', ['get', 'isSelected'], 3, 2],
-              13, ['case', ['get', 'isSelected'], 5, 3],
-              15, ['case', ['get', 'isSelected'], 8, 5],
-              18, ['case', ['get', 'isSelected'], 10, 6],
+              10, ['case', ['get', 'isSelected'], 3 * markerSizeScale, 2 * markerSizeScale],
+              13, ['case', ['get', 'isSelected'], 5 * markerSizeScale, 3 * markerSizeScale],
+              15, ['case', ['get', 'isSelected'], 8 * markerSizeScale, 5 * markerSizeScale],
+              18, ['case', ['get', 'isSelected'], 10 * markerSizeScale, 6 * markerSizeScale],
             ],
             'circle-color': ['get', 'color'],
             'circle-stroke-color': '#ffffff',
             'circle-stroke-width': [
               'interpolate', ['linear'], ['zoom'],
-              10, ['case', ['get', 'isSelected'], 1, 0.5],
-              15, ['case', ['get', 'isSelected'], 2, 1],
+              10, ['case', ['get', 'isSelected'], 1 * markerSizeScale, 0.5 * markerSizeScale],
+              15, ['case', ['get', 'isSelected'], 2 * markerSizeScale, 1 * markerSizeScale],
             ],
             'circle-opacity': 0.85,
             'circle-stroke-opacity': 0.85,

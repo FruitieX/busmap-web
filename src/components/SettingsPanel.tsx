@@ -50,6 +50,8 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
   const {
     locationRadius,
     setLocationRadius,
+    markerSizeLevel,
+    setMarkerSizeLevel,
     theme,
     setTheme,
     mapStyle,
@@ -58,8 +60,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
     setShowRouteLines,
     routeColorMode,
     setRouteColorMode,
-    animateVehicles,
-    setAnimateVehicles,
     showVehicleTerminusLabel,
     setShowVehicleTerminusLabel,
     developerMode,
@@ -150,7 +150,7 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
 
           {/* Panel */}
           <motion.div
-            className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-white dark:bg-gray-900 shadow-xl z-50 flex flex-col"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-72 md:max-w-sm bg-white dark:bg-gray-900 shadow-xl z-50 flex flex-col"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -187,6 +187,48 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                   Appearance
                 </h3>
                 <div className="space-y-3">
+                  {/* Marker/font size */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-gray-700 dark:text-gray-200">Marker &amp; font size</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={markerSizeLevel}
+                      onChange={(e) => setMarkerSizeLevel(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                      className="w-full accent-primary-500"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                      <span>Smaller</span>
+                      <span>Default</span>
+                      <span>Largest</span>
+                    </div>
+                  </div>
+
+                <div className="space-y-3">
+                  {/* Startup map range */}
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-gray-700 dark:text-gray-200">Startup map range</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="250"
+                    max="4000"
+                    step="250"
+                    value={locationRadius}
+                    onChange={(e) => setLocationRadius(Number(e.target.value))}
+                    className="w-full accent-primary-500"
+                  />
+                  <div className="text-center text-sm text-gray-600 dark:text-gray-300">
+                    {locationRadius < 1000
+                      ? `${locationRadius} meters`
+                      : `${(locationRadius / 1000).toFixed(1)} km`}
+                  </div>
+                </div>
+
                   {/* Theme */}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-700 dark:text-gray-200">Theme</span>
@@ -229,28 +271,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                     </select>
                   </div>
 
-                  {/* Show route lines */}
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Show route lines</span>
-                    <input
-                      type="checkbox"
-                      checked={showRouteLines}
-                      onChange={(e) => setShowRouteLines(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-
-                  {/* Animate vehicles */}
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-gray-700 dark:text-gray-200">Animate vehicles</span>
-                    <input
-                      type="checkbox"
-                      checked={animateVehicles}
-                      onChange={(e) => setAnimateVehicles(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
-
                   {/* Show vehicle destination label */}
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
@@ -266,39 +286,40 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                       className="w-5 h-5 accent-primary-500"
                     />
                   </label>
-                </div>
-              </section>
 
-              {/* Location Zoom Radius */}
-              <section>
-                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  Location Zoom Radius
-                </h3>
-                <div className="space-y-3">
-                  <input
-                    type="range"
-                    min="250"
-                    max="4000"
-                    step="250"
-                    value={locationRadius}
-                    onChange={(e) => setLocationRadius(Number(e.target.value))}
-                    className="w-full accent-primary-500"
-                  />
-                  <div className="text-center text-sm text-gray-600 dark:text-gray-300">
-                    {locationRadius < 1000
-                      ? `${locationRadius} meters`
-                      : `${(locationRadius / 1000).toFixed(1)} km`}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                    Visible area on startup and when pressing &quot;Go to my location&quot;
-                  </div>
+                  {/* Show route lines */}
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-200">Show route lines</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Draw route paths on the map
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={showRouteLines}
+                      onChange={(e) => setShowRouteLines(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
+
+                  {/* Animate vehicles */}
+                  {/* <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-gray-700 dark:text-gray-200">Animate vehicles</span>
+                    <input
+                      type="checkbox"
+                      checked={animateVehicles}
+                      onChange={(e) => setAnimateVehicles(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label> */}
                 </div>
               </section>
 
               {/* Data */}
               <section>
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Data
                   </h3>
                   <button
@@ -308,20 +329,6 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                   >
                     Clear all saved data ({totalSavedCount})
                   </button>
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <div>
-                      <span className="text-gray-700 dark:text-gray-200">Developer mode</span>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        Show extra vehicle details in popovers
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={developerMode}
-                      onChange={(e) => setDeveloperMode(e.target.checked)}
-                      className="w-5 h-5 accent-primary-500"
-                    />
-                  </label>
                 </div>
               </section>
 
@@ -415,6 +422,25 @@ const SettingsPanelComponent = ({ isOpen, onClose }: SettingsPanelProps) => {
                     </svg>
                     View on GitHub
                   </a>
+                </div>
+              </section>
+
+              <section>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-200">Developer mode</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Show extra vehicle details in popovers
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={developerMode}
+                      onChange={(e) => setDeveloperMode(e.target.checked)}
+                      className="w-5 h-5 accent-primary-500"
+                    />
+                  </label>
                 </div>
               </section>
             </div>

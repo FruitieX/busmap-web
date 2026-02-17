@@ -61,3 +61,13 @@ export const getVehicleTiming = (mode: string): VehicleTiming =>
 export const TOP_BAR_HEIGHT = 48;
 export const VEHICLE_FLY_TO_ZOOM = 16;
 export const FAB_TOP_OFFSET = 72;
+
+export const MARKER_SIZE_SCALE: Record<1 | 2 | 3 | 4 | 5, number> = {
+  1: 0.85,
+  2: 1,
+  3: 1.25,
+  4: 1.5,
+  5: 2,
+};
+
+export const getMarkerSizeScale = (level: 1 | 2 | 3 | 4 | 5): number => MARKER_SIZE_SCALE[level];
