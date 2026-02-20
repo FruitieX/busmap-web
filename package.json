@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.90.21",
-    "framer-motion": "12.34.0",
+    "framer-motion": "12.34.1",
     "maplibre-gl": "5.18.0",
     "mqtt": "5.15.0",
     "react": "18.3.1",
