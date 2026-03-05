@@ -1008,9 +1008,29 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
   // Build GeoJSON for stop markers
   // Always show the selected stop and subscribed stops, even if showStops is off
+  // Also highlight stops on the selected vehicle's route
+  const selectedVehicleRouteGtfsId = selectedVehicle ? `HSL:${selectedVehicle.routeId}` : null;
+  // Convert MQTT direction (1/2) to GTFS direction (0/1)
+  const selectedVehicleGtfsDir = selectedVehicle ? selectedVehicle.direction - 1 : null;
+
   const stopsGeoJson = useMemo((): FeatureCollection<Point> => {
     // Collect all stops to show, deduplicating by gtfsId
     const stopById: Record<string, Stop> = {};
+    const highlightedStopIds = new Set<string>();
+
+    // When a vehicle is selected, find nearby stops on its route + direction and highlight them
+    if (selectedVehicleRouteGtfsId && selectedVehicleGtfsDir !== null && nearbyStops) {
+      for (const stop of nearbyStops) {
+        if (!stop.routes.some((r) => r.gtfsId === selectedVehicleRouteGtfsId)) continue;
+        // Check direction: only highlight if this stop serves the vehicle's direction
+        const dirs = stop.routeDirections?.[selectedVehicleRouteGtfsId];
+        if (dirs && !dirs.includes(selectedVehicleGtfsDir)) continue;
+        highlightedStopIds.add(stop.gtfsId);
+        if (!(stop.gtfsId in stopById)) {
+          stopById[stop.gtfsId] = stop;
+        }
+      }
+    }
 
     // Always include selected stop
     if (selectedStop) {
@@ -1049,23 +1069,33 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
 
     return {
       type: 'FeatureCollection',
-      features: stopsToShow.map((stop) => ({
-        type: 'Feature' as const,
-        properties: {
-          gtfsId: stop.gtfsId,
-          name: stop.name,
-          code: stop.code,
-          vehicleMode: stop.vehicleMode,
-          isSelected: selectedStop?.gtfsId === stop.gtfsId,
-          color: TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus,
-        },
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [stop.lon, stop.lat],
-        },
-      })),
+      features: stopsToShow.map((stop) => {
+        const isHighlighted = highlightedStopIds.has(stop.gtfsId);
+        // Fade out non-highlighted stops when a vehicle is selected (same pattern as route selection)
+        let opacity = 0.85;
+        if (highlightedStopIds.size > 0 && !isHighlighted) {
+          opacity = 0.1;
+        }
+
+        return {
+          type: 'Feature' as const,
+          properties: {
+            gtfsId: stop.gtfsId,
+            name: stop.name,
+            code: stop.code,
+            vehicleMode: stop.vehicleMode,
+            isSelected: selectedStop?.gtfsId === stop.gtfsId,
+            opacity,
+            color: TRANSPORT_COLORS[stop.vehicleMode] ?? TRANSPORT_COLORS.bus,
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [stop.lon, stop.lat],
+          },
+        };
+      }),
     };
-  }, [showStops, nearbyStops, selectedStop, subscribedStops]);
+  }, [showStops, nearbyStops, selectedStop, subscribedStops, selectedVehicleRouteGtfsId, selectedVehicleGtfsDir]);
 
   // Build GeoJSON for user location circles (flat on 3D tilted maps)
   const userCirclesGeoJson = useMemo((): FeatureCollection<Polygon> => {
@@ -1433,8 +1463,8 @@ const BusMapComponent = ({ patterns, onVehicleClick, onSubscribe, onUnsubscribe,
               10, ['case', ['get', 'isSelected'], 1 * markerSizeScale, 0.5 * markerSizeScale],
               15, ['case', ['get', 'isSelected'], 2 * markerSizeScale, 1 * markerSizeScale],
             ],
-            'circle-opacity': 0.85,
-            'circle-stroke-opacity': 0.85,
+            'circle-opacity': ['get', 'opacity'],
+            'circle-stroke-opacity': ['get', 'opacity'],
           }}
         />
 

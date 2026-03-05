@@ -138,6 +138,8 @@ export interface Stop {
   routes: StopRoute[];
   /** Direction-specific headsigns from patterns serving this stop */
   headsigns?: string[];
+  /** Maps route gtfsId to GTFS direction IDs (0 or 1) served at this stop */
+  routeDirections?: Record<string, number[]>;
 }
 
 // Upcoming departure at a stop (from Digitransit stoptimes API)

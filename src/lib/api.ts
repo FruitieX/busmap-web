@@ -257,6 +257,10 @@ interface StopsByRadiusResponse {
           }>;
           patterns: Array<{
             headsign: string;
+            directionId: number;
+            route: {
+              gtfsId: string;
+            };
           }>;
         };
         distance: number;
@@ -289,6 +293,10 @@ export const fetchNearbyStops = async (
             }
             patterns {
               headsign
+              directionId
+              route {
+                gtfsId
+              }
             }
           }
           distance
@@ -307,6 +315,18 @@ export const fetchNearbyStops = async (
         .filter((h): h is string => !!h),
     )];
 
+    // Build route → directions mapping
+    const routeDirections: Record<string, number[]> = {};
+    for (const p of node.stop.patterns) {
+      const routeId = p.route.gtfsId;
+      if (!(routeId in routeDirections)) {
+        routeDirections[routeId] = [];
+      }
+      if (!routeDirections[routeId].includes(p.directionId)) {
+        routeDirections[routeId].push(p.directionId);
+      }
+    }
+
     return {
       gtfsId: node.stop.gtfsId,
       name: node.stop.name,
@@ -321,6 +341,7 @@ export const fetchNearbyStops = async (
         mode: normalizeMode(r.mode, r.gtfsId),
       })),
       headsigns,
+      routeDirections,
       distance: node.distance,
     };
   });
