@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "ci:build": "npm run lint && npm run typecheck && npm run build",
+    "ci:build": "npm run lint && npm run typecheck && npm run build && npm run ci:verify-build",
     "ci:smoke": "node scripts/smoke.mjs",
+    "ci:verify-build": "node scripts/verify-build.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
