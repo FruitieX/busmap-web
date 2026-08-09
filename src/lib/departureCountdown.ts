@@ -53,7 +53,7 @@ export function findMatchingVehicle(
 
   // If we have a trip start time match, prefer it
   const startTimeMatch =
-    departure.tripStartTime &&
+    Boolean(departure.tripStartTime) &&
     vehicle.startTime === departure.tripStartTime;
 
   // If no timing match, check proximity as a fallback
@@ -145,7 +145,7 @@ export function computeDepartureCountdown(
     if (!findMatchingVehicle(vehicle, departure, stopLat, stopLon)) continue;
 
     const startTimeMatch =
-      departure.tripStartTime &&
+      Boolean(departure.tripStartTime) &&
       vehicle.startTime === departure.tripStartTime;
 
     // Prefer exact startTime match, then most recent update
