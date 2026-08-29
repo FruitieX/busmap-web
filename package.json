@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "5.102.3",
+    "@tanstack/react-query": "5.102.4",
     "motion": "13.1.1",
     "maplibre-gl": "6.6.0",
     "mqtt": "5.15.2",
