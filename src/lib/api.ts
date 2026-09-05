@@ -1,4 +1,4 @@
-import type { Route, RoutePattern, TransportMode, Stop, StopRoute, StopDeparture } from '@/types';
+import type { Route, RoutePattern, TransportMode, Stop, StopRoute, StopDeparture, VehicleTrip } from '@/types';
 
 const API_ENDPOINT = 'https://api.digitransit.fi/routing/v2/hsl/gtfs/v1';
 export const STATIC_API_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -857,6 +857,130 @@ export const fetchStopTimetable = async (stopId: string): Promise<StopTimetableR
   }
 
   return { departures, directions };
+};
+
+interface VehicleTripResponse {
+  fuzzyTrip: {
+    gtfsId: string;
+    directionId: string;
+    tripHeadsign: string | null;
+    stoptimes: Array<{
+      stop: {
+        gtfsId: string;
+        name: string;
+        code: string;
+        lat: number;
+        lon: number;
+      } | null;
+      serviceDay: number;
+      stopPositionInPattern: number;
+      scheduledArrival: number | null;
+      scheduledDeparture: number | null;
+      realtimeArrival: number | null;
+      realtimeDeparture: number | null;
+      departureDelay: number | null;
+      realtime: boolean | null;
+      realtimeState: string | null;
+    } | null>;
+  } | null;
+}
+
+const escapeGraphqlString = (value: string): string => (
+  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+);
+
+const parseTripStartTime = (value: string): number | null => {
+  const match = /^(\d+):(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || minutes > 59) return null;
+  return hours * 60 * 60 + minutes * 60;
+};
+
+// GTFS service time starts twelve hours before local noon, including on DST
+// transition days. Trip.stoptimes may return serviceDay=-1 (schedule only).
+const getHelsinkiServiceDay = (operatingDay: string): number => {
+  const noonUtc = new Date(`${operatingDay}T12:00:00Z`);
+  const localHour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki', hour: '2-digit', hourCycle: 'h23',
+  }).format(noonUtc));
+  return noonUtc.getTime() / 1000 - localHour * 3600;
+};
+
+// Match an HFP vehicle to its scheduled trip so the vehicle detail view can
+// show the ordered stops, including the current and upcoming stops.
+export const fetchVehicleTrip = async (
+  routeId: string,
+  direction: 1 | 2,
+  operatingDay: string,
+  startTime: string,
+): Promise<VehicleTrip | null> => {
+  const startSeconds = parseTripStartTime(startTime);
+  if (startSeconds === null || !/^\d{4}-\d{2}-\d{2}$/.test(operatingDay)
+    || !Number.isFinite(Date.parse(`${operatingDay}T12:00:00Z`))) return null;
+
+  const query = `{
+    fuzzyTrip(
+      route: "${escapeGraphqlString(routeId)}"
+      direction: ${direction - 1}
+      date: "${escapeGraphqlString(operatingDay)}"
+      time: ${startSeconds}
+    ) {
+      gtfsId
+      directionId
+      tripHeadsign
+      stoptimes {
+        serviceDay
+        stop {
+          gtfsId
+          name
+          code
+          lat
+          lon
+        }
+        stopPositionInPattern
+        scheduledArrival
+        scheduledDeparture
+        realtimeArrival
+        realtimeDeparture
+        departureDelay
+        realtime
+        realtimeState
+      }
+    }
+  }`;
+
+  const data = await graphqlFetch<VehicleTripResponse>(query);
+  const trip = data.fuzzyTrip;
+  if (!trip) return null;
+
+  return {
+    gtfsId: trip.gtfsId,
+    directionId: Number(trip.directionId),
+    headsign: trip.tripHeadsign ?? '',
+    stops: trip.stoptimes.flatMap((st) => {
+      if (!st?.stop) return [];
+
+      return [{
+        gtfsId: st.stop.gtfsId,
+        name: st.stop.name,
+        code: st.stop.code,
+        lat: st.stop.lat,
+        lon: st.stop.lon,
+        serviceDay: st.serviceDay > 0 ? st.serviceDay : getHelsinkiServiceDay(operatingDay),
+        stopPosition: st.stopPositionInPattern,
+        scheduledArrival: st.scheduledArrival,
+        scheduledDeparture: st.scheduledDeparture,
+        realtimeArrival: st.realtimeArrival,
+        realtimeDeparture: st.realtimeDeparture,
+        departureDelay: st.departureDelay ?? 0,
+        realtime: st.realtime ?? false,
+        realtimeState: st.realtimeState ?? 'SCHEDULED',
+      }];
+    }),
+  };
 };
 
 // Fetch routes for a specific stop

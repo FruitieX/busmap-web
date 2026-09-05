@@ -1106,6 +1106,15 @@ const App = () => {
                 isFollowing={mapCameraState.isFollowingVehicle}
                 onReFollow={mapCameraActions?.refollowVehicle}
                 onRouteActivate={handleVehicleRouteActivate}
+                onStopClick={(stop) => {
+                  const fullStop = stopsForSearch.find((candidate) => candidate.gtfsId === stop.gtfsId) ?? stop;
+                  if (selectedStop?.gtfsId === stop.gtfsId) {
+                    setSelectedVehicleId(null);
+                    restoreSelectedStopContext();
+                  } else {
+                    handleStopClick(fullStop);
+                  }
+                }}
                 backTitle={selectedStop ? 'Back to stop' : 'Back to vehicles'}
               />
             ) : (

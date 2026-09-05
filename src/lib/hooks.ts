@@ -4,6 +4,7 @@ import {
   fetchAllStops,
   fetchRoutePatterns,
   fetchStopTimetable,
+  fetchVehicleTrip,
   getCachedRoutes,
   getCachedRoutesSnapshot,
   getCachedStops,
@@ -14,7 +15,7 @@ import {
   STATIC_API_CACHE_TTL,
 } from './api';
 import type { StopTimetableResult } from './api';
-import type { Route, RoutePattern, Stop } from '@/types';
+import type { Route, RoutePattern, Stop, TrackedVehicle, VehicleTrip } from '@/types';
 
 const ROUTES_QUERY_KEY = ['routes', 'normalized'] as const;
 const STOPS_QUERY_KEY = ['stops', 'normalized'] as const;
@@ -82,6 +83,25 @@ export const useStopTimetable = (stopId: string | null) => {
     gcTime: 1000 * 60 * 5, // 5 minutes
     enabled: stopId !== null && isApiKeyConfigured(),
     refetchInterval: 1000 * 30, // Auto-refresh every 30 seconds
+    refetchOnWindowFocus: true,
+  });
+};
+
+export const useVehicleTrip = (vehicle: TrackedVehicle | null) => {
+  const routeId = vehicle ? `HSL:${vehicle.routeId}` : null;
+
+  return useQuery<VehicleTrip | null, Error>({
+    queryKey: ['vehicleTrip', routeId, vehicle?.direction, vehicle?.operatingDay, vehicle?.startTime],
+    queryFn: () => fetchVehicleTrip(
+      routeId!,
+      vehicle!.direction,
+      vehicle!.operatingDay,
+      vehicle!.startTime,
+    ),
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 10,
+    enabled: vehicle !== null && routeId !== null && isApiKeyConfigured(),
+    refetchInterval: 1000 * 30,
     refetchOnWindowFocus: true,
   });
 };

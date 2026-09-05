@@ -34,7 +34,7 @@ interface HfpPayload {
     line: number; // Line number
     start: string; // Start time HH:mm
     loc: string; // Location source
-    stop: string | null; // Next stop ID
+    stop: string | number | null; // Next stop ID (HFP commonly sends a number)
     route: string; // Route ID
     occu: number; // Occupancy 0-100
   };
@@ -441,7 +441,7 @@ class MqttService {
         startTime: vp.start,
         operatingDay: vp.oday,
         delay: vp.dl,
-        nextStopId: vp.stop,
+        nextStopId: vp.stop == null || vp.stop === 0 ? null : String(vp.stop),
         doorStatus: vp.drst as 0 | 1,
         occupancy: vp.occu,
         timestamp: new Date(vp.tst),

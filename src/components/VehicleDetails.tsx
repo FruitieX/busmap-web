@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import type { Route, TrackedVehicle } from '@/types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Route, Stop, TrackedVehicle, VehicleTripStop } from '@/types';
 import { useSettingsStore, useSubscriptionStore } from '@/stores';
-import { resolveRouteColor } from '@/lib';
+import { resolveRouteColor, useVehicleTrip } from '@/lib';
 import { DELAY_EARLY_THRESHOLD, DELAY_LATE_THRESHOLD, MPS_TO_KMPH } from '@/constants';
 import { StarIcon } from './StarToggleButton';
 
@@ -13,6 +13,7 @@ interface VehicleDetailsProps {
   isFollowing?: boolean;
   onReFollow?: () => void;
   onRouteActivate?: (route: Route) => void;
+  onStopClick: (stop: Stop) => void;
   backTitle?: string;
 }
 
@@ -37,6 +38,41 @@ const formatLastUpdate = (lastUpdate: number, now: number): string => {
   return `${minutes}m ago`;
 };
 
+const normalizeStopId = (stopId: unknown): string =>
+  typeof stopId === 'string' || typeof stopId === 'number' ? String(stopId).replace(/^HSL:/, '') : '';
+
+const formatTripTime = (seconds: number | null): string => {
+  if (seconds === null) return '-';
+  return new Intl.DateTimeFormat('fi-FI', {
+    timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit',
+  }).format(new Date(seconds * 1000)).replace('.', ':');
+};
+
+const getStopDeparture = (stop: VehicleTripStop, vehicleDelay: number): number | null => {
+  if (!Number.isFinite(stop.serviceDay) || stop.serviceDay <= 0) return null;
+  const seconds = stop.realtime
+    ? stop.realtimeDeparture ?? stop.realtimeArrival
+    : stop.scheduledDeparture ?? stop.scheduledArrival;
+  if (seconds === null || !Number.isFinite(seconds)) return null;
+  return stop.serviceDay + seconds + (stop.realtime ? 0 : vehicleDelay);
+};
+
+const formatRelativeDeparture = (departure: number | null, now: number): string => {
+  if (departure === null) return 'Time unavailable';
+  const seconds = departure - now / 1000;
+  if (seconds >= 60) return `In ${Math.ceil(seconds / 60)} min`;
+  if (seconds >= 0) return 'Due now';
+  if (seconds > -60) return '<1 min ago';
+  return `${Math.floor(-seconds / 60)} min ago`;
+};
+
+type VehicleStopStatus = 'departed' | 'next' | 'upcoming';
+
+interface VehicleStopRow {
+  stop: VehicleTripStop;
+  status: VehicleStopStatus;
+}
+
 export const VehicleDetails = ({
   vehicle,
   onBack,
@@ -45,12 +81,14 @@ export const VehicleDetails = ({
   isFollowing = true,
   onReFollow,
   onRouteActivate,
+  onStopClick,
   backTitle = 'Back to vehicles',
 }: VehicleDetailsProps) => {
   const subscribedRoutes = useSubscriptionStore((state) => state.subscribedRoutes);
   const developerMode = useSettingsStore((state) => state.developerMode);
   const routeColorMode = useSettingsStore((state) => state.routeColorMode);
   const [now, setNow] = useState(Date.now());
+  const { data: vehicleTrip, isLoading: isTripLoading, isError: isTripError } = useVehicleTrip(vehicle);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -80,6 +118,48 @@ export const VehicleDetails = ({
       : vehicle.delay < DELAY_EARLY_THRESHOLD
         ? 'text-green-500'
         : 'text-gray-600 dark:text-gray-400';
+
+  const visibleStops = useMemo<VehicleStopRow[]>(() => {
+    if (!vehicleTrip?.stops.length) return [];
+
+    const nextStopId = normalizeStopId(vehicle.nextStopId);
+    // Resolve repeated stops by the departure closest to the vehicle's timestamp.
+    const matches = vehicleTrip.stops.flatMap((stop, index) =>
+      nextStopId && normalizeStopId(stop.gtfsId) === nextStopId ? [index] : []);
+    const nextStopIndex = matches.reduce((best, index) => {
+      const distance = (i: number) => Math.abs((getStopDeparture(vehicleTrip.stops[i], vehicle.delay) ?? Infinity) - vehicle.lastUpdate / 1000);
+      return best < 0 || distance(index) < distance(best) ? index : best;
+    }, -1);
+
+    // HFP's stop field identifies the next stop. Keep a couple of passed stops
+    // for context and show the next five stops ahead of it.
+    const timedIndex = vehicleTrip.stops.findIndex((stop) => {
+      const departure = getStopDeparture(stop, vehicle.delay);
+      return departure !== null && departure >= now / 1000;
+    });
+    const hasTimes = vehicleTrip.stops.some((stop) => getStopDeparture(stop, vehicle.delay) !== null);
+    const currentIndex = nextStopIndex >= 0 ? nextStopIndex
+      : timedIndex >= 0 ? timedIndex : hasTimes ? vehicleTrip.stops.length - 1 : 0;
+    const startIndex = Math.max(0, currentIndex - 2);
+    const endIndex = Math.min(vehicleTrip.stops.length, currentIndex + 6);
+
+    return vehicleTrip.stops.slice(startIndex, endIndex).map((stop, index) => {
+      const absoluteIndex = startIndex + index;
+      return {
+        stop,
+        status: nextStopIndex >= 0 && absoluteIndex === nextStopIndex
+          ? 'next'
+          : nextStopIndex >= 0 && absoluteIndex < currentIndex
+            ? 'departed'
+            : 'upcoming',
+      };
+    });
+  }, [vehicle.nextStopId, vehicle.delay, vehicle.lastUpdate, vehicleTrip, now]);
+
+  const stopStatusLabel = (status: VehicleStopStatus): string => {
+    if (status === 'next') return vehicle.doorStatus === 1 ? 'At stop' : 'Next stop';
+    return status === 'departed' ? 'Departed' : 'Upcoming';
+  };
 
   return (
     <div className="space-y-3 px-0.5">
@@ -126,6 +206,64 @@ export const VehicleDetails = ({
           <div className="text-sm font-semibold text-gray-900 dark:text-white">{formatLastUpdate(vehicle.lastUpdate, now)}</div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400">Updated</div>
         </div>
+      </div>
+
+      <div className="pt-1">
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
+          Trip stops
+        </h3>
+        {isTripLoading ? (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
+            Loading stops...
+          </div>
+        ) : visibleStops.length > 0 ? (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl divide-y divide-gray-200 dark:divide-gray-700 overflow-hidden">
+            {visibleStops.map(({ stop, status }) => {
+              const isCanceled = stop.realtimeState === 'CANCELED';
+              const stopDelay = stop.realtime ? stop.departureDelay : vehicle.delay;
+              const departure = getStopDeparture(stop, vehicle.delay);
+              const statusClass = status === 'next'
+                ? 'text-primary-600 dark:text-primary-400'
+                : status === 'departed'
+                  ? 'text-gray-400 dark:text-gray-500'
+                  : 'text-gray-500 dark:text-gray-400';
+
+              return (
+                <button
+                  type="button"
+                  key={`${stop.gtfsId}-${stop.stopPosition}`}
+                  onClick={() => onStopClick({ ...stop, vehicleMode: vehicle.mode, routes: [route] })}
+                  aria-label={`Show ${stop.name} on map`}
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 ${isCanceled ? 'opacity-50' : ''}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-gray-900 dark:text-white truncate">{stop.name}</div>
+                    <div className={`text-[10px] ${statusClass}`}>
+                      {isCanceled ? 'Canceled' : stopStatusLabel(status)}{stop.code ? ` · ${stop.code}` : ''}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {isCanceled ? 'Canceled' : `${!stop.realtime && departure !== null ? '≈ ' : ''}${formatRelativeDeparture(departure, now)}`}
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                      {formatTripTime(departure)}{!isCanceled && departure !== null ? stop.realtime ? ' · Live' : ' · Estimated' : ''}
+                    </div>
+                    {Math.abs(stopDelay) >= 30 && !isCanceled && (
+                      <div className={`text-[10px] ${stopDelay > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        {formatDelay(stopDelay)}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
+            {isTripError ? 'Stop information is temporarily unavailable.' : 'No trip stop information available.'}
+          </div>
+        )}
       </div>
 
       {developerMode && (

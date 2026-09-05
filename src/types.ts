@@ -159,6 +159,31 @@ export interface StopDeparture {
   tripStartTime: string; // HH:mm - departure from first stop (matches vehicle startTime)
 }
 
+// A stop on the currently running vehicle trip
+export interface VehicleTripStop {
+  gtfsId: string;
+  name: string;
+  code: string;
+  lat: number;
+  lon: number;
+  serviceDay: number;
+  stopPosition: number;
+  scheduledArrival: number | null;
+  scheduledDeparture: number | null;
+  realtimeArrival: number | null;
+  realtimeDeparture: number | null;
+  departureDelay: number;
+  realtime: boolean;
+  realtimeState: string;
+}
+
+export interface VehicleTrip {
+  gtfsId: string;
+  directionId: number;
+  headsign: string;
+  stops: VehicleTripStop[];
+}
+
 // Subscribed (bookmarked) transit stop
 export interface SubscribedStop {
   gtfsId: string;
