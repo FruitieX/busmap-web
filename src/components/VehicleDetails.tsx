@@ -66,7 +66,10 @@ const formatRelativeDeparture = (departure: number | null, now: number): string 
   return `${Math.floor(-seconds / 60)} min ago`;
 };
 
-type VehicleStopStatus = 'departed' | 'next' | 'upcoming';
+type VehicleStopStatus = 'departed' | 'expected-departed' | 'next' | 'upcoming';
+
+const isPastStop = (status: VehicleStopStatus): boolean =>
+  status === 'departed' || status === 'expected-departed';
 
 interface VehicleStopRow {
   stop: VehicleTripStop;
@@ -131,33 +134,25 @@ export const VehicleDetails = ({
       return best < 0 || distance(index) < distance(best) ? index : best;
     }, -1);
 
-    // HFP's stop field identifies the next stop. Keep a couple of passed stops
-    // for context and show the next five stops ahead of it.
-    const timedIndex = vehicleTrip.stops.findIndex((stop) => {
+    // Live stop order takes precedence over predictions. Without a stop match,
+    // use departure times, but distinguish expected departures from passed stops.
+    const rows = vehicleTrip.stops.map<VehicleStopRow>((stop, index) => {
       const departure = getStopDeparture(stop, vehicle.delay);
-      return departure !== null && departure >= now / 1000;
-    });
-    const hasTimes = vehicleTrip.stops.some((stop) => getStopDeparture(stop, vehicle.delay) !== null);
-    const currentIndex = nextStopIndex >= 0 ? nextStopIndex
-      : timedIndex >= 0 ? timedIndex : hasTimes ? vehicleTrip.stops.length - 1 : 0;
-    const startIndex = Math.max(0, currentIndex - 2);
-    const endIndex = Math.min(vehicleTrip.stops.length, currentIndex + 6);
-
-    return vehicleTrip.stops.slice(startIndex, endIndex).map((stop, index) => {
-      const absoluteIndex = startIndex + index;
       return {
         stop,
-        status: nextStopIndex >= 0 && absoluteIndex === nextStopIndex
-          ? 'next'
-          : nextStopIndex >= 0 && absoluteIndex < currentIndex
-            ? 'departed'
-            : 'upcoming',
+        status: nextStopIndex >= 0
+          ? index < nextStopIndex ? 'departed' : index === nextStopIndex ? 'next' : 'upcoming'
+          : departure !== null && departure < now / 1000 ? 'expected-departed' : 'upcoming',
       };
     });
+    const past = rows.filter(({ status }) => isPastStop(status)).slice(-1);
+    const upcoming = rows.filter(({ status }) => !isPastStop(status)).slice(0, 6);
+    return [...past, ...upcoming];
   }, [vehicle.nextStopId, vehicle.delay, vehicle.lastUpdate, vehicleTrip, now]);
 
   const stopStatusLabel = (status: VehicleStopStatus): string => {
     if (status === 'next') return vehicle.doorStatus === 1 ? 'At stop' : 'Next stop';
+    if (status === 'expected-departed') return 'Expected to have departed';
     return status === 'departed' ? 'Departed' : 'Upcoming';
   };
 
@@ -206,64 +201,6 @@ export const VehicleDetails = ({
           <div className="text-sm font-semibold text-gray-900 dark:text-white">{formatLastUpdate(vehicle.lastUpdate, now)}</div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400">Updated</div>
         </div>
-      </div>
-
-      <div className="pt-1">
-        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
-          Trip stops
-        </h3>
-        {isTripLoading ? (
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
-            Loading stops...
-          </div>
-        ) : visibleStops.length > 0 ? (
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl divide-y divide-gray-200 dark:divide-gray-700 overflow-hidden">
-            {visibleStops.map(({ stop, status }) => {
-              const isCanceled = stop.realtimeState === 'CANCELED';
-              const stopDelay = stop.realtime ? stop.departureDelay : vehicle.delay;
-              const departure = getStopDeparture(stop, vehicle.delay);
-              const statusClass = status === 'next'
-                ? 'text-primary-600 dark:text-primary-400'
-                : status === 'departed'
-                  ? 'text-gray-400 dark:text-gray-500'
-                  : 'text-gray-500 dark:text-gray-400';
-
-              return (
-                <button
-                  type="button"
-                  key={`${stop.gtfsId}-${stop.stopPosition}`}
-                  onClick={() => onStopClick({ ...stop, vehicleMode: vehicle.mode, routes: [route] })}
-                  aria-label={`Show ${stop.name} on map`}
-                  className={`w-full text-left flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 ${isCanceled ? 'opacity-50' : ''}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-gray-900 dark:text-white truncate">{stop.name}</div>
-                    <div className={`text-[10px] ${statusClass}`}>
-                      {isCanceled ? 'Canceled' : stopStatusLabel(status)}{stop.code ? ` · ${stop.code}` : ''}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {isCanceled ? 'Canceled' : `${!stop.realtime && departure !== null ? '≈ ' : ''}${formatRelativeDeparture(departure, now)}`}
-                    </div>
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {formatTripTime(departure)}{!isCanceled && departure !== null ? stop.realtime ? ' · Live' : ' · Estimated' : ''}
-                    </div>
-                    {Math.abs(stopDelay) >= 30 && !isCanceled && (
-                      <div className={`text-[10px] ${stopDelay > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                        {formatDelay(stopDelay)}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
-            {isTripError ? 'Stop information is temporarily unavailable.' : 'No trip stop information available.'}
-          </div>
-        )}
       </div>
 
       {developerMode && (
@@ -369,6 +306,72 @@ export const VehicleDetails = ({
           </button>
         </div>
       )}
+      <div className="pt-1">
+        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-1">
+          Trip stops
+        </h3>
+        {isTripLoading ? (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
+            Loading stops...
+          </div>
+        ) : visibleStops.length > 0 ? (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl divide-y divide-gray-200 dark:divide-gray-700 overflow-hidden">
+            {visibleStops.map(({ stop, status }) => {
+              const isCanceled = stop.realtimeState === 'CANCELED';
+              const stopDelay = stop.realtime ? stop.departureDelay : vehicle.delay;
+              const departure = getStopDeparture(stop, vehicle.delay);
+              const isPast = isPastStop(status);
+              // A vehicle still approaching a stop can outlast its prediction.
+              // Describe that prediction as overdue, rather than as a departure.
+              const relativeTime = !isPast && departure !== null && departure < now / 1000
+                ? `${formatRelativeDeparture(departure, now).replace(' ago', '')} overdue`
+                : status === 'departed' && departure !== null && departure >= now / 1000
+                  ? 'Departed'
+                  : formatRelativeDeparture(departure, now);
+              const statusClass = status === 'next'
+                ? 'text-primary-600 dark:text-primary-400'
+                : isPast
+                  ? 'text-gray-400 dark:text-gray-500'
+                  : 'text-gray-500 dark:text-gray-400';
+
+              return (
+                <button
+                  type="button"
+                  key={`${stop.gtfsId}-${stop.stopPosition}`}
+                  onClick={() => onStopClick({ ...stop, vehicleMode: vehicle.mode, routes: [route] })}
+                  aria-label={`Show ${stop.name} on map`}
+                  className={`w-full text-left flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 ${isCanceled || isPast ? 'opacity-50 hover:opacity-75 focus-visible:opacity-100' : ''}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-gray-900 dark:text-white truncate">{stop.name}</div>
+                    <div className={`text-[10px] ${statusClass}`}>
+                      {isCanceled ? 'Canceled' : stopStatusLabel(status)}{stop.code ? ` · ${stop.code}` : ''}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {isCanceled ? 'Canceled' : `${!stop.realtime && departure !== null && relativeTime !== 'Departed' ? '≈ ' : ''}${relativeTime}`}
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                      {formatTripTime(departure)}{!isCanceled && departure !== null ? stop.realtime ? ' · Live' : ' · Estimated' : ''}
+                    </div>
+                    {Math.abs(stopDelay) >= 30 && !isCanceled && (
+                      <div className={`text-[10px] ${stopDelay > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        {formatDelay(stopDelay)}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 text-sm text-gray-500 dark:text-gray-400">
+            {isTripError ? 'Stop information is temporarily unavailable.' : 'No trip stop information available.'}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 };

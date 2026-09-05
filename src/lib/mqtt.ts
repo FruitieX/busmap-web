@@ -375,7 +375,10 @@ class MqttService {
       const data: HfpPayload = JSON.parse(payload.toString());
       const vp = data.VP;
 
-      if (!vp || vp.lat == null || vp.long == null) {
+      if (!vp || vp.lat == null || vp.long == null
+        || !Number.isFinite(vp.lat) || Math.abs(vp.lat) > 90
+        || !Number.isFinite(vp.long) || Math.abs(vp.long) > 180
+        || !Number.isFinite(Date.parse(vp.tst))) {
         return;
       }
 
@@ -431,16 +434,16 @@ class MqttService {
         vehicleNumber: vp.veh,
         lat: vp.lat,
         lng: vp.long,
-        heading: vp.hdg,
-        speed: vp.spd,
-        acceleration: vp.acc,
+        heading: Number.isFinite(vp.hdg) ? vp.hdg : 0,
+        speed: Number.isFinite(vp.spd) ? Math.max(0, vp.spd) : 0,
+        acceleration: Number.isFinite(vp.acc) ? vp.acc : 0,
         routeId: vp.route,
         routeShortName: vp.desi,
         direction: vp.dir === '2' ? 2 : 1,
         headsign: topicParts[11] || '',
         startTime: vp.start,
         operatingDay: vp.oday,
-        delay: vp.dl,
+        delay: Number.isFinite(vp.dl) ? vp.dl : 0,
         nextStopId: vp.stop == null || vp.stop === 0 ? null : String(vp.stop),
         doorStatus: vp.drst as 0 | 1,
         occupancy: vp.occu,

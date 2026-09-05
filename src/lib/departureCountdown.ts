@@ -1,9 +1,6 @@
 import type { TrackedVehicle, StopDeparture } from '@/types';
 import { haversineDistance } from '@/lib/utils';
 
-/** Maximum distance (meters) to consider a vehicle "matching" a departure by proximity alone. */
-const PROXIMITY_MATCH_RADIUS = 2000;
-
 /** Maximum ETA we'll show (minutes). Beyond this, we don't have enough data. */
 const MAX_ETA_MINUTES = 30;
 
@@ -28,13 +25,13 @@ export interface DepartureCountdown {
  * 1. Find vehicles on the same route heading in the same direction
  * 2. Prefer vehicles whose startTime matches the departure's tripStartTime
  * 3. Among candidates, prefer the one whose last position update is most recent
- * 4. If no timing match, use proximity to the stop as a fallback
+ * A nearby vehicle on a different trip must never be substituted.
  */
 export function findMatchingVehicle(
   vehicle: TrackedVehicle,
   departure: StopDeparture,
-  stopLat: number,
-  stopLon: number,
+  _stopLat: number,
+  _stopLon: number,
 ): boolean {
   // Extract route IDs for comparison
   const vehicleRouteId = vehicle.routeId.replace('HSL:', '');
@@ -48,32 +45,26 @@ export function findMatchingVehicle(
   if (vehicle.direction !== mqttDir) return false;
 
   // Check timing compatibility
-  const vehicleAge = Date.now() - vehicle.lastPositionUpdate;
-  if (vehicleAge > MAX_VEHICLE_AGE_MS) return false;
+  const vehicleAge = Date.now() - vehicle.lastUpdate;
+  if (vehicleAge > MAX_VEHICLE_AGE_MS || vehicle.exitingAt || departure.realtimeState === 'CANCELED') return false;
 
   // If we have a trip start time match, prefer it
   const startTimeMatch =
     Boolean(departure.tripStartTime) &&
     vehicle.startTime === departure.tripStartTime;
 
-  // If no timing match, check proximity as a fallback
-  if (!startTimeMatch) {
-    const dist = haversineDistance(
-      vehicle.lat, vehicle.lng,
-      stopLat, stopLon,
-    );
-    // Only use proximity for nearby departures (within ~2km)
-    if (dist > PROXIMITY_MATCH_RADIUS) return false;
-  }
-
-  return true;
+  // Noon belongs to the service date even on daylight-saving transitions.
+  const serviceDate = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Helsinki', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date((departure.serviceDay + 12 * 3600) * 1000));
+  return startTimeMatch && vehicle.operatingDay === serviceDate;
 }
 
 /**
  * Calculate the estimated time of arrival (ETA) for a vehicle at a stop.
  *
- * Uses the vehicle's speed and distance to the stop to compute an ETA.
- * Falls back to schedule-based estimation if speed data is unavailable.
+ * Uses the departure prediction. Straight-line distance divided by current
+ * speed ignores route geometry, traffic lights and intermediate stops.
  */
 export function calculateETA(
   vehicle: TrackedVehicle,
@@ -86,38 +77,12 @@ export function calculateETA(
     stopLat, stopLon,
   );
 
-  // If the vehicle is at or past the stop, ETA is 0
-  if (distanceMeters < 50) {
-    return { etaMinutes: 0, distanceMeters };
-  }
-
-  // Use speed to estimate ETA
-  // Speed is in m/s, so time = distance / speed
-  const speedMps = Math.max(vehicle.speed, 0);
-
-  if (speedMps > 0.5) {
-    // Vehicle is moving — use actual speed
-    const etaSeconds = distanceMeters / speedMps;
-    const etaMinutes = etaSeconds / 60;
-
-    // Clamp to reasonable range
-    if (etaMinutes <= MAX_ETA_MINUTES) {
-      return {
-        etaMinutes: Math.round(etaMinutes * 10) / 10, // One decimal place
-        distanceMeters,
-      };
-    }
-  }
-
-  // Fallback: estimate based on schedule offset
-  // If the vehicle was last seen recently, assume it's roughly on schedule
   const now = Date.now() / 1000;
   const timeUntilScheduled = scheduledDepartureUnix - now;
 
-  if (timeUntilScheduled > -60 && timeUntilScheduled < 3600) {
-    // Vehicle is roughly on schedule — use the scheduled time
+  if (timeUntilScheduled > -60 && timeUntilScheduled <= MAX_ETA_MINUTES * 60) {
     return {
-      etaMinutes: Math.max(0, Math.round(timeUntilScheduled / 60)),
+      etaMinutes: Math.max(0, timeUntilScheduled / 60),
       distanceMeters,
     };
   }
@@ -152,7 +117,7 @@ export function computeDepartureCountdown(
     if (
       !bestVehicle ||
       (startTimeMatch && !bestStartTimeMatch) ||
-      (vehicle.lastPositionUpdate > bestVehicle.lastPositionUpdate)
+      (startTimeMatch === bestStartTimeMatch && vehicle.lastUpdate > bestVehicle.lastUpdate)
     ) {
       bestVehicle = vehicle;
       bestStartTimeMatch = startTimeMatch;
@@ -163,7 +128,8 @@ export function computeDepartureCountdown(
     return { vehicle: null, etaMinutes: null, distanceMeters: null, isPredicted: false };
   }
 
-  const scheduledDepartureUnix = departure.serviceDay + departure.realtimeDeparture;
+  const scheduledDepartureUnix = departure.serviceDay + (departure.realtime
+    ? departure.realtimeDeparture : departure.scheduledDeparture + bestVehicle.delay);
   const { etaMinutes, distanceMeters } = calculateETA(
     bestVehicle,
     stopLat,
@@ -175,7 +141,7 @@ export function computeDepartureCountdown(
     vehicle: bestVehicle,
     etaMinutes,
     distanceMeters,
-    isPredicted: etaMinutes !== null,
+    isPredicted: !departure.realtime && etaMinutes !== null,
   };
 }
 

@@ -75,7 +75,7 @@ export const BottomSheet = ({
   // Handle ESC key to minimize sheet
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !e.defaultPrevented && !window.history.state?.settingsOpen && !window.history.state?.searchOpen) {
         // Animate to minimized position
         animate(y, defaultHeight - minHeight, SHEET_SPRING);
         onClose?.();
@@ -84,7 +84,7 @@ export const BottomSheet = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [y, maxHeight, minHeight, onClose]);
+  }, [y, defaultHeight, minHeight, onClose]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent) => {
@@ -96,7 +96,7 @@ export const BottomSheet = ({
   return (
     <motion.div
       ref={containerRef}
-      className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-2xl shadow-sheet z-40"
+      className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-2xl shadow-sheet z-40 flex flex-col"
       style={{
         height,
         paddingBottom: 'var(--safe-area-inset-bottom)',
@@ -107,7 +107,7 @@ export const BottomSheet = ({
     >
       {/* Drag handle - visual only */}
       <div
-        className="flex justify-center py-2 cursor-grab active:cursor-grabbing touch-none"
+        className="flex justify-center py-2 shrink-0 cursor-grab active:cursor-grabbing touch-none"
         onPointerDown={startDrag}
       >
         <div className="sheet-handle" />
@@ -126,7 +126,7 @@ export const BottomSheet = ({
       />
 
       {/* Content */}
-      <div className="h-full overflow-hidden px-4 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden px-4 flex flex-col">
         {/* Fixed header */}
         {header && <div className="shrink-0">{header}</div>}
         {/* Scrollable content */}

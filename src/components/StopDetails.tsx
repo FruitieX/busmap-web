@@ -10,6 +10,7 @@ import { StarIcon } from './StarToggleButton';
 interface StopDetailsProps {
   stop: Stop;
   onBack: () => void;
+  backTitle?: string;
   onDepartureClick: (departure: StopDeparture) => void;
   onReCenter?: () => void;
   onRouteActivate?: (route: Route) => void;
@@ -17,12 +18,12 @@ interface StopDetailsProps {
 
 const formatDepartureTime = (serviceDay: number, departure: number): string => {
   const date = new Date((serviceDay + departure) * 1000);
-  return date.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit' });
 };
 
-const getMinutesUntil = (serviceDay: number, departure: number): number => {
+const getMinutesUntil = (serviceDay: number, departure: number, now: number): number => {
   const departureMs = (serviceDay + departure) * 1000;
-  return Math.round((departureMs - Date.now()) / 60000);
+  return Math.ceil((departureMs - now) / 60000);
 };
 
 const formatDelay = (delaySeconds: number): string => {
@@ -45,11 +46,12 @@ interface DepartureCardProps {
   onClick: () => void;
   vehicleOnMap: boolean;
   countdown: DepartureCountdownData;
+  now: number;
 }
 
-const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown }: DepartureCardProps) => {
+const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }: DepartureCardProps) => {
   const color = TRANSPORT_COLORS[departure.routeMode] ?? TRANSPORT_COLORS.bus;
-  const minutesUntil = getMinutesUntil(departure.serviceDay, departure.realtimeDeparture);
+  const minutesUntil = getMinutesUntil(departure.serviceDay, departure.realtimeDeparture, now);
   const isCanceled = departure.realtimeState === 'CANCELED';
 
   const delayClass =
@@ -60,10 +62,10 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown }: Dep
         : 'text-gray-500 dark:text-gray-400';
 
   // Countdown display
-  const hasCountdown = countdown.isPredicted && countdown.etaMinutes !== null;
+  const hasCountdown = !isCanceled && countdown.isPredicted && countdown.etaMinutes !== null;
   const countdownLabel = hasCountdown
     ? countdown.etaMinutes! < 1
-      ? 'Arriving'
+      ? 'Due now'
       : countdown.etaMinutes! < 5
         ? `${Math.ceil(countdown.etaMinutes!)} min`
         : `${Math.round(countdown.etaMinutes!)} min`
@@ -76,8 +78,10 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown }: Dep
     : 'text-gray-500 dark:text-gray-400';
 
   return (
-    <div
-      className={`bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-150 ${isCanceled ? 'opacity-50' : ''} ${!vehicleOnMap && !isCanceled ? 'opacity-50' : ''}`}
+    <button
+      type="button"
+      disabled={isCanceled}
+      className={`w-full text-left bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 transition-all duration-150 ${isCanceled ? 'opacity-50' : ''}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-3">
@@ -107,7 +111,7 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown }: Dep
                 {hasCountdown && (
                   <>
                     <span className="text-gray-400">•</span>
-                    <span className={countdownClass}>{countdownLabel}</span>
+                    <span className={countdownClass}>≈ {countdownLabel}</span>
                     {countdown.vehicle && (
                       <>
                         <span className="text-gray-400">•</span>
@@ -135,19 +139,24 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown }: Dep
             {formatDepartureTime(departure.serviceDay, departure.realtimeDeparture)}
           </div>
           <div className={`text-xs ${countdownLabel ? countdownClass : minutesUntil <= 1 ? 'text-primary-500 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
-            {countdownLabel || (minutesUntil <= 0 ? 'Now' : `${minutesUntil} min`)}
+            {isCanceled ? 'Canceled' : countdownLabel ? `≈ ${countdownLabel}` : minutesUntil < 0 ? `${Math.abs(minutesUntil)} min ago` : minutesUntil === 0 ? 'Now' : `${minutesUntil} min`}
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 });
 
 DepartureCard.displayName = 'DepartureCard';
 
-const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRouteActivate }: StopDetailsProps) => {
+const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRouteActivate, backTitle = 'Back to stops' }: StopDetailsProps) => {
   const setStopDirections = useStopStore((state) => state.setStopDirections);
-  const { data: timetable, isLoading } = useStopTimetable(stop.gtfsId);
+  const { data: timetable, isLoading, isError, refetch } = useStopTimetable(stop.gtfsId);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isSubscribed = useSubscribedStopStore((state) => state.isStopSubscribed(stop.gtfsId));
   const subscribeToStop = useSubscribedStopStore((state) => state.subscribeToStop);
@@ -201,60 +210,21 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
     return getStopTermini(stop.routes);
   }, [stop.headsigns, stop.routes, timetable?.departures]);
 
-  // Build set of vehicle trip keys currently on the map for graying out departures
+  // Match timetable rows to live vehicles.
   const vehiclesMap = useVehicleStore((state) => state.vehicles);
-  const vehicleTripKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const v of vehiclesMap.values()) {
-      // Key matches the lookup in handleDepartureClick: routeId + direction + startTime
-      keys.add(`${v.routeId}:${v.direction}:${v.startTime}`);
-    }
-    return keys;
-  }, [vehiclesMap]);
 
   // Filter out past departures and canceled ones at the top
   const sortedDepartures = useMemo(() => {
     if (!timetable?.departures) return [];
     return timetable.departures.filter((d) => {
-      const minutesUntil = getMinutesUntil(d.serviceDay, d.realtimeDeparture);
+      const minutesUntil = getMinutesUntil(d.serviceDay, d.realtimeDeparture, now);
       return minutesUntil >= -1; // Show departures from 1 min ago onward
     });
-  }, [timetable?.departures]);
+  }, [timetable?.departures, now]);
 
-  // Compute departure countdowns — re-evaluate every 15 seconds for fresh ETA
-  const [countdowns, setCountdowns] = useState<Map<number, DepartureCountdownData>>(new Map());
-
-  useEffect(() => {
-    if (!sortedDepartures.length || !vehiclesMap.size) {
-      setCountdowns(new Map());
-      return;
-    }
-
-    const compute = () => {
-      const raw = computeAllDepartureCountdowns(
-        sortedDepartures,
-        vehiclesMap,
-        stop.lat,
-        stop.lon,
-      );
-      const result = new Map<number, DepartureCountdownData>();
-      for (const [index, cd] of raw) {
-        result.set(index, {
-          vehicle: cd.vehicle
-            ? { vehicleNumber: cd.vehicle.vehicleNumber, speed: cd.vehicle.speed }
-            : null,
-          etaMinutes: cd.etaMinutes,
-          distanceMeters: cd.distanceMeters,
-          isPredicted: cd.isPredicted,
-        });
-      }
-      setCountdowns(result);
-    };
-
-    compute();
-    const interval = setInterval(compute, 15_000);
-    return () => clearInterval(interval);
-  }, [sortedDepartures, vehiclesMap, stop.lat, stop.lon]);
+  const countdowns = useMemo(() => computeAllDepartureCountdowns(
+    sortedDepartures, vehiclesMap, stop.lat, stop.lon,
+  ), [sortedDepartures, vehiclesMap, stop.lat, stop.lon]);
 
   return (
     <div className="min-w-0 overflow-hidden">
@@ -262,6 +232,8 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
       <div className="flex items-center gap-3 mb-3 px-0.5 min-w-0">
         <button
           onClick={onBack}
+          aria-label={backTitle}
+          title={backTitle}
           className="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -354,6 +326,11 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
           <div className="w-8 h-8 mb-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading timetable...</p>
         </div>
+      ) : isError && !timetable ? (
+        <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400" role="status">
+          <p>Timetable is temporarily unavailable.</p>
+          <button type="button" onClick={() => void refetch()} className="mt-3 text-primary-500 underline">Try again</button>
+        </div>
       ) : sortedDepartures.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -369,17 +346,15 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
       ) : (
         <div className="space-y-2 px-0.5">
           {sortedDepartures.map((dep, i) => {
-            const routeId = dep.routeGtfsId.replace('HSL:', '');
-            const mqttDir = (dep.directionId + 1) as 1 | 2;
-            const tripKey = `${routeId}:${mqttDir}:${dep.tripStartTime}`;
             const countdown = countdowns.get(i) ?? { vehicle: null, etaMinutes: null, distanceMeters: null, isPredicted: false };
             return (
               <DepartureCard
                 key={`${dep.routeGtfsId}-${dep.serviceDay}-${dep.scheduledDeparture}-${i}`}
                 departure={dep}
                 onClick={() => onDepartureClick(dep)}
-                vehicleOnMap={vehicleTripKeys.has(tripKey)}
+                vehicleOnMap={countdown.vehicle !== null}
                 countdown={countdown}
+                now={now}
               />
             );
           })}

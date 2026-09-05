@@ -11,13 +11,16 @@ const loadLastLocation = (): { latitude: number; longitude: number } | null => {
     const stored = localStorage.getItem(LAST_LOCATION_KEY);
     if (!stored) return null;
     const parsed = JSON.parse(stored);
-    if (isFinite(parsed.latitude) && isFinite(parsed.longitude)) return parsed;
+    if (parsed && Number.isFinite(parsed.latitude) && Math.abs(parsed.latitude) <= 90
+      && Number.isFinite(parsed.longitude) && Math.abs(parsed.longitude) <= 180) return parsed;
   } catch { /* ignore */ }
   return null;
 };
 
 const saveLastLocation = (latitude: number, longitude: number) => {
-  localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ latitude, longitude }));
+  try {
+    localStorage.setItem(LAST_LOCATION_KEY, JSON.stringify({ latitude, longitude }));
+  } catch { /* Location tracking must work when storage is unavailable or full. */ }
 };
 
 /** Convert a radius in meters to a map zoom level that fits the circle on screen. */
@@ -26,7 +29,7 @@ export const radiusToZoom = (radiusMeters: number, latitude: number, bottomPaddi
   // MapLibre uses 512px tiles
   const metersPerPixelAtZoom0 = earthCircumference * Math.cos(latitude * Math.PI / 180) / 512;
   const availableHeight = window.innerHeight - bottomPadding - TOP_BAR_HEIGHT;
-  const halfScreen = Math.min(window.innerWidth, availableHeight) / 2;
+  const halfScreen = Math.max(1, Math.min(window.innerWidth, availableHeight) / 2);
   const metersPerPixel = radiusMeters / halfScreen;
   return Math.log2(metersPerPixelAtZoom0 / metersPerPixel);
 };
@@ -83,7 +86,7 @@ const createLocationStore = () => create<LocationState>((set, get) => ({
 
   setUserLocation: (userLocation) => {
     saveLastLocation(userLocation.latitude, userLocation.longitude);
-    set({ userLocation, locationError: null });
+    set({ userLocation, lastKnownLocation: { latitude: userLocation.latitude, longitude: userLocation.longitude }, locationError: null });
   },
   setLocationError: (locationError) => set({ locationError, isLocating: false }),
   setIsLocating: (isLocating) => set({ isLocating }),

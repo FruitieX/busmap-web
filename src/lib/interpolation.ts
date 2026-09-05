@@ -32,8 +32,10 @@ export const extrapolate = (
   dtSeconds: number,
 ): InterpolatedPosition => {
   // Integrate speed with linear acceleration, clamped at zero
-  const avgSpeed = Math.max(0, speed + speedAccel * dtSeconds * 0.5);
-  const distance = avgSpeed * dtSeconds;
+  const movingSeconds = speedAccel < 0
+    ? Math.min(dtSeconds, Math.max(0, speed) / -speedAccel)
+    : dtSeconds;
+  const distance = Math.max(0, speed * movingSeconds + 0.5 * speedAccel * movingSeconds * movingSeconds);
 
   // Exponential heading blend: velocity → reported (handles turns)
   const headingDiff = ((reportedHeading - velocityHeading + 540) % 360) - 180;

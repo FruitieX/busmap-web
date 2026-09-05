@@ -23,7 +23,7 @@ import {
   requestUserLocation,
   watchUserLocation,
 } from '@/stores';
-import { haversineDistance, mqttService, resolveRouteColor, useRoutePatterns, useStops } from '@/lib';
+import { findMatchingVehicle, haversineDistance, mqttService, resolveRouteColor, useRoutePatterns, useStops } from '@/lib';
 import type { Route, TrackedVehicle, BoundingBox, SubscribedRoute, Stop, StopDeparture } from '@/types';
 import {
   SHEET_MIN_HEIGHT,
@@ -62,9 +62,9 @@ const LocationIcon = () => (
 type SheetTab = 'vehicles' | 'routes' | 'stops';
 
 type SheetHistoryEntry =
-  | { tab: 'vehicles'; vehicleId: string }
+  | { tab: 'vehicles'; vehicleId: string; stop: Stop | null }
   | { tab: 'routes'; routeId: string; route: Route | SubscribedRoute | null }
-  | { tab: 'stops' };
+  | { tab: 'stops'; stop: Stop };
 
 interface SheetNavigationOptions {
   preserveHistory?: boolean;
@@ -86,6 +86,7 @@ const isSameSheetHistoryEntry = (a: SheetHistoryEntry, b: SheetHistoryEntry): bo
   if (a.tab !== b.tab) return false;
   if (a.tab === 'vehicles' && b.tab === 'vehicles') return a.vehicleId === b.vehicleId;
   if (a.tab === 'routes' && b.tab === 'routes') return a.routeId === b.routeId;
+  if (a.tab === 'stops' && b.tab === 'stops') return a.stop.gtfsId === b.stop.gtfsId;
   return true;
 };
 
@@ -235,11 +236,11 @@ const App = () => {
     let entry: SheetHistoryEntry | null = null;
 
     if (activeTab === 'vehicles' && selectedVehicleId) {
-      entry = { tab: 'vehicles', vehicleId: selectedVehicleId };
+      entry = { tab: 'vehicles', vehicleId: selectedVehicleId, stop: selectedStop };
     } else if (activeTab === 'routes' && selectedRouteId) {
       entry = { tab: 'routes', routeId: selectedRouteId, route: activatedRoute };
     } else if (activeTab === 'stops' && selectedStop) {
-      entry = { tab: 'stops' };
+      entry = { tab: 'stops', stop: selectedStop };
     }
 
     if (!entry) return;
@@ -264,9 +265,11 @@ const App = () => {
   const userLocation = useLocationStore((state) => state.userLocation);
   const lastKnownLocation = useLocationStore((state) => state.lastKnownLocation);
   const effectiveLocation = userLocation ?? lastKnownLocation;
+  const latitude = effectiveLocation?.latitude;
+  const longitude = effectiveLocation?.longitude;
   const userCoords = useMemo(
-    () => effectiveLocation ? { lat: effectiveLocation.latitude, lng: effectiveLocation.longitude } : null,
-    [effectiveLocation?.latitude, effectiveLocation?.longitude]
+    () => latitude !== undefined && longitude !== undefined ? { lat: latitude, lng: longitude } : null,
+    [latitude, longitude]
   );
 
   // Stable coordinates for nearby calculations — only updates when the user
@@ -283,7 +286,7 @@ const App = () => {
     const next = { lat: userCoords.lat, lng: userCoords.lng };
     stableCoordsRef.current = next;
     return next;
-  }, [userCoords?.lat, userCoords?.lng]);
+  }, [userCoords]);
 
   const { data: allStops, isLoading: stopsLoading } = useStops();
 
@@ -366,7 +369,7 @@ const App = () => {
 
     if (!stableCoords) {
       // Request location if we don't have it
-      if (!userCoords) requestUserLocation().catch(console.error);
+      requestUserLocation().catch(console.error);
       return;
     }
 
@@ -581,6 +584,7 @@ const App = () => {
     if (!previous) return false;
 
     if (previous.tab === 'stops') {
+      selectStop(previous.stop);
       setSelectedVehicleId(null);
       setSelectedRouteId(null);
       setActivatedRoute(null);
@@ -601,13 +605,25 @@ const App = () => {
 
     setSelectedRouteId(null);
     setActivatedRoute(null);
-    if (!selectedStop) {
-      cleanupTempSubscriptions();
+    cleanupTempSubscriptions();
+    if (previous.stop) {
+      selectStop(previous.stop);
+      for (const route of previous.stop.routes) ensureTemporaryRouteSubscription(route);
+    } else {
+      clearSelectedStop();
+    }
+    const vehicle = useVehicleStore.getState().vehicles.get(previous.vehicleId);
+    if (vehicle) {
+      ensureTemporaryRouteSubscription({
+        gtfsId: `HSL:${vehicle.routeId}`, shortName: vehicle.routeShortName,
+        longName: vehicle.headsign, mode: vehicle.mode,
+      });
+      useLocationStore.getState().flyToLocation(vehicle.lat, vehicle.lng, VEHICLE_FLY_TO_ZOOM);
     }
     setSelectedVehicleId(previous.vehicleId);
     showSheetTab('vehicles');
     return true;
-  }, [cleanupTempSubscriptions, ensureTemporaryRouteSubscription, restoreSelectedStopContext, selectedStop, showSheetTab]);
+  }, [cleanupTempSubscriptions, ensureTemporaryRouteSubscription, restoreSelectedStopContext, selectStop, clearSelectedStop, showSheetTab]);
 
   // Navigate back to the selected stop from a vehicle or route detail subview.
   const handleBackToStop = useCallback(() => {
@@ -646,16 +662,11 @@ const App = () => {
   const handleDepartureClick = useCallback(
     (departure: StopDeparture) => {
       const vehicles = useVehicleStore.getState().vehicles;
-      const routeId = departure.routeGtfsId.replace('HSL:', '');
-      const mqttDir = (departure.directionId + 1) as 1 | 2;
 
       let bestMatch: TrackedVehicle | null = null;
 
       for (const vehicle of vehicles.values()) {
-        if (vehicle.routeId !== routeId || vehicle.direction !== mqttDir) continue;
-
-        // Match by trip start time (HH:mm) for exact trip identification
-        if (vehicle.startTime === departure.tripStartTime) {
+        if (findMatchingVehicle(vehicle, departure, 0, 0)) {
           bestMatch = vehicle;
           break;
         }
@@ -1108,12 +1119,15 @@ const App = () => {
                 onRouteActivate={handleVehicleRouteActivate}
                 onStopClick={(stop) => {
                   const fullStop = stopsForSearch.find((candidate) => candidate.gtfsId === stop.gtfsId) ?? stop;
-                  if (selectedStop?.gtfsId === stop.gtfsId) {
-                    setSelectedVehicleId(null);
-                    restoreSelectedStopContext();
-                  } else {
-                    handleStopClick(fullStop);
-                  }
+                  pushCurrentSheetView();
+                  setSelectedVehicleId(null);
+                  setSelectedRouteId(null);
+                  setActivatedRoute(null);
+                  selectStop(fullStop);
+                  // Keep the vehicle's route subscribed while viewing its stop.
+                  for (const route of fullStop.routes) ensureTemporaryRouteSubscription(route);
+                  showSheetTab('stops');
+                  useLocationStore.getState().flyToLocation(fullStop.lat, fullStop.lon, 14);
                 }}
                 backTitle={selectedStop ? 'Back to stop' : 'Back to vehicles'}
               />
@@ -1205,6 +1219,7 @@ const App = () => {
             <StopDetails
               stop={selectedStop}
               onBack={handleStopBack}
+              backTitle={sheetHistoryRef.current.at(-1)?.tab === 'vehicles' ? 'Back to vehicle' : 'Back to stops'}
               onDepartureClick={handleDepartureClick}
               onReCenter={mapCameraState.hasMovedFromStop ? mapCameraActions?.recenterStop : undefined}
               onRouteActivate={handleStopRouteActivate}

@@ -116,8 +116,9 @@ const createVehicleStore = () => create<VehicleState>((set, get) => ({
 
   updateVehicle: (vehicle) => {
     set((state) => {
+      const existing = state.vehicles.get(vehicle.vehicleId);
+      if (existing && vehicle.timestamp.getTime() < existing.timestamp.getTime()) return state;
       const vehicles = new Map(state.vehicles);
-      const existing = vehicles.get(vehicle.vehicleId);
       processVehicleUpdate(vehicle, existing, Date.now());
       vehicles.set(vehicle.vehicleId, vehicle);
       return { vehicles };
@@ -141,6 +142,7 @@ const createVehicleStore = () => create<VehicleState>((set, get) => ({
 
       for (const vehicle of vehicleBatch) {
         const existing = vehicles.get(vehicle.vehicleId);
+        if (existing && vehicle.timestamp.getTime() < existing.timestamp.getTime()) continue;
         processVehicleUpdate(vehicle, existing, now);
         vehicles.set(vehicle.vehicleId, vehicle);
       }

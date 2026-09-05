@@ -747,7 +747,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
 
       // Predict where the vehicle will be when the animation ends
       let center: [number, number] = [vehicle.lng, vehicle.lat];
-      if (vehicle.speed > 0.3) {
+      if (vehicle.speed > 0.3 && now - vehicle.lastPositionUpdate <= getVehicleTiming(vehicle.mode).maxExtrapolateMs) {
         const predicted = extrapolate(
           vehicle.lat,
           vehicle.lng,
@@ -755,7 +755,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
           vehicle.reportedHeading ?? vehicle.heading,
           vehicle.speed,
           vehicle.speedAcceleration ?? vehicle.acceleration ?? 0,
-          (now - vehicle.lastPositionUpdate + duration) / 1000,
+          Math.min(now - vehicle.lastPositionUpdate + duration, getVehicleTiming(vehicle.mode).maxExtrapolateMs) / 1000,
         );
         center = [predicted.lng, predicted.lat];
       }
@@ -778,9 +778,10 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
   // Stop following on user-initiated pan/zoom while keeping the selection active.
   const handleMoveStart = useCallback(
     (evt: ViewStateChangeEvent) => {
-      // Only react to user-initiated moves (has originalEvent) and not during programmatic tracking
-      if (evt.originalEvent && !isProgrammaticMoveRef.current) {
+      // User input takes priority even while a camera animation is running.
+      if (evt.originalEvent) {
         if (selectedVehicleId && isFollowingVehicleRef.current) {
+          isFollowingVehicleRef.current = false;
           setIsFollowingVehicle(false);
         }
         if (selectedRouteId && !hasMovedFromRoute) {
