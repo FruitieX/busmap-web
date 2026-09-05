@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.102.8",
-    "motion": "13.1.1",
+    "motion": "13.2.0",
     "maplibre-gl": "6.7.0",
     "mqtt": "5.15.2",
     "react": "18.3.1",
