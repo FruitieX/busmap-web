@@ -3,6 +3,7 @@ export { VehicleList } from './VehicleList';
 export { VehicleDetails } from './VehicleDetails';
 export { RouteDetails } from './RouteDetails';
 export { NearbyStops } from './NearbyStops';
+export { NearbyDepartures } from './NearbyDepartures';
 export { StopDetails } from './StopDetails';
 export { BottomSheet } from './BottomSheet';
 export { StatusBar } from './StatusBar';

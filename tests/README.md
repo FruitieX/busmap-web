@@ -18,6 +18,10 @@ needed: CI builds with a dummy API key and tests intercept transit requests.
   vehicle → stop → vehicle navigation; relative departure labels and unavailable
   vehicles; search and saved-route/theme persistence; cached timetable failures;
   service-worker activation and offline app-shell reload.
+- Location and compact details: nearest-stop departure previews and return navigation,
+  permission-denied fallback, nearest upcoming trip stop, expandable trip/route
+  information, and 320px layouts in light/dark mode. Screenshots are saved in
+  the test output for visual inspection (not pixel-baseline comparisons).
 
 Tests exercise the compiled app through its UI. HTTP and MQTT WebSocket fixtures
 provide controlled data with departures relative to the test clock. The clock

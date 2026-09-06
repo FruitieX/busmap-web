@@ -1,5 +1,68 @@
 import { test, expect } from './fixtures';
 
+test('launch shows nearest departures and opens the selected stop', async ({ page }) => {
+  await page.goto('/');
+  const nearby = page.getByRole('region', { name: 'Nearby departures' });
+  await expect(nearby.getByRole('heading', { name: 'Departures near you' })).toBeVisible();
+  await expect(nearby.getByRole('button')).toHaveCount(3);
+  await expect(nearby.getByRole('button').first()).toHaveAccessibleName('Departures from Otaniemi');
+  await expect(nearby.getByRole('button').first()).toContainText('2 min');
+  await expect(nearby.getByRole('button').first().getByLabel('Tracked route').first()).toBeVisible();
+  await nearby.getByRole('button').first().click();
+  await expect(page.getByRole('heading', { name: 'Otaniemi', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Next departures' })).toBeVisible();
+  await expect(page.getByText('0 m from you')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to nearby departures' }).click();
+  await expect(nearby).toBeVisible();
+});
+
+test('details stay compact and navigable at 320px', async ({ page, app }, testInfo) => {
+  app.extendTrip();
+  await page.setViewportSize({ width: 320, height: 740 });
+  if (testInfo.project.name === 'mobile') await page.addInitScript(() => {
+    const saved = JSON.parse(localStorage.getItem('busmap-settings')!);
+    saved.state.theme = 'dark';
+    localStorage.setItem('busmap-settings', JSON.stringify(saved));
+  });
+  await page.goto('/');
+  await page.getByRole('region', { name: 'Live vehicles', exact: true }).getByText('Pasila', { exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Show .* on map$/ })).toHaveCount(4);
+  await expect(page.getByText(/Nearest to you/)).toBeVisible();
+  for (const name of ['Vehicles', 'Routes', 'Stops']) {
+    const tab = page.getByRole('button', { name, exact: true });
+    await expect(tab).toBeVisible();
+    const box = await tab.boundingBox();
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  }
+  await expect(page.locator('details').filter({ hasText: 'Vehicle activity' })).not.toHaveAttribute('open');
+  await page.screenshot({ path: testInfo.outputPath('vehicle-320.png') });
+  await page.getByRole('button', { name: 'Show 3 more stops' }).click();
+  await expect(page.getByRole('button', { name: /^Show .* on map$/ })).toHaveCount(7);
+  await page.getByRole('button', { name: 'Show fewer stops' }).click();
+  await page.getByRole('button', { name: 'Show Otaniemi on map' }).click();
+  await expect(page.locator('details').filter({ hasText: 'Routes at this stop' })).not.toHaveAttribute('open');
+  await page.screenshot({ path: testInfo.outputPath('stop-320.png') });
+  await page.getByText('Routes at this stop · 1', { exact: true }).click();
+  await page.getByRole('button', { name: 'Open route 551', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Live vehicles', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Towards Pasila' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('route-320.png') });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('location denial keeps the vehicle list usable without misleading nearby results', async ({ page }) => {
+  await page.addInitScript(() => {
+    const deny = (_success: PositionCallback, failure?: PositionErrorCallback | null) => {
+      queueMicrotask(() => failure?.({ code: 1, message: 'Denied', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }));
+      return 1;
+    };
+    Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition: deny, watchPosition: deny, clearWatch: () => {} } });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Live vehicles', exact: true }).getByText('Pasila', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Nearby departures' })).toHaveCount(0);
+});
+
 test('production app loads its map worker and supports sheet controls', async ({ page }) => {
   const worker = page.waitForResponse((response) => /maplibre-gl-worker-.*\.js/.test(response.url()) && response.ok());
   await page.goto('/');
@@ -23,7 +86,7 @@ test('production app loads its map worker and supports sheet controls', async ({
 
 test('MQTT vehicle -> trip stop -> vehicle preserves navigation and departure meaning', async ({ page, app }) => {
   await page.goto('/');
-  await page.getByText('Pasila', { exact: true }).click();
+  await page.getByRole('region', { name: 'Live vehicles', exact: true }).getByText('Pasila', { exact: true }).click();
   await expect(page.getByText('Trip stops', { exact: true })).toBeVisible();
   await expect(page.getByText('In 2 min', { exact: true })).toBeVisible();
   await expect(page.getByText(/^Departed ·/)).toHaveCount(1);
@@ -45,9 +108,9 @@ test('search, route selection, saved-route persistence and theme survive reload'
   await page.getByRole('button').filter({ hasText: /Search/ }).first().click();
   await page.getByPlaceholder('Search routes & stops...').fill('551');
   await page.getByRole('button').filter({ hasText: 'Westend - Pasila' }).first().click();
-  await expect(page.getByText('Stop tracking route', { exact: true })).toBeVisible();
-  await page.getByText('Stop tracking route', { exact: true }).click();
-  await expect(page.getByText('Track this route', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Stop tracking route', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop tracking route', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Track this route', exact: true })).toBeVisible();
   await page.reload();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('busmap-subscriptions')!).state.subscribedRoutes);
   expect(saved).toEqual([]);
@@ -60,7 +123,7 @@ test('search, route selection, saved-route persistence and theme survive reload'
 
 test('failed timetable refresh retains cached departures and shows a warning', async ({ page, app }) => {
   await page.goto('/');
-  await page.getByText('Pasila', { exact: true }).click();
+  await page.getByRole('region', { name: 'Live vehicles', exact: true }).getByText('Pasila', { exact: true }).click();
   await page.getByRole('button', { name: 'Show Otaniemi on map' }).click();
   await expect(page.getByText('In 2 min', { exact: true })).toBeVisible();
   app.failTimetable();

@@ -122,7 +122,17 @@ export async function mockServices(page: Page) {
     unexpectedRequests.push(`${request.request().method()} ${url.origin}${url.pathname}`);
     return request.abort();
   });
-  return { publish, failTimetable: () => { failTimetable = true; }, unexpectedRequests };
+  return {
+    publish, failTimetable: () => { failTimetable = true; }, unexpectedRequests,
+    extendTrip: () => {
+      for (let i = 3; i < 7; i++) stoptimes.push({
+        ...stoptimes[2], stop: { ...stops[2], gtfsId: `HSL:${1220101 + i}`, name: `Long destination stop ${i}` },
+        stopPositionInPattern: i,
+        scheduledArrival: nowSeconds + i * 240, scheduledDeparture: nowSeconds + i * 240,
+        realtimeArrival: nowSeconds + i * 240, realtimeDeparture: nowSeconds + i * 240,
+      });
+    },
+  };
 }
 
 export const test = base.extend<{ app: Awaited<ReturnType<typeof mockServices>> }>({

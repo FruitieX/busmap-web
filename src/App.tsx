@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { radiusToZoom } from './stores/locationStore';
 import { motion, AnimatePresence, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import {
   BusMap,
@@ -6,6 +7,7 @@ import {
   VehicleDetails,
   RouteDetails,
   NearbyStops,
+  NearbyDepartures,
   StopDetails,
   BottomSheet,
   StatusBar,
@@ -62,7 +64,7 @@ const LocationIcon = () => (
 type SheetTab = 'vehicles' | 'routes' | 'stops';
 
 type SheetHistoryEntry =
-  | { tab: 'vehicles'; vehicleId: string; stop: Stop | null }
+  | { tab: 'vehicles'; vehicleId: string | null; stop: Stop | null }
   | { tab: 'routes'; routeId: string; route: Route | SubscribedRoute | null }
   | { tab: 'stops'; stop: Stop };
 
@@ -203,7 +205,7 @@ const App = () => {
   const selectedVehicleRouteId = selectedVehicle?.routeId;
   const previousView = sheetHistoryRef.current.at(-1);
   const previousViewLabel = previousView?.tab === 'vehicles'
-    ? `Back to vehicle ${vehiclesMap.get(previousView.vehicleId)?.routeShortName ?? ''}`.trim()
+    ? previousView.vehicleId ? `Back to vehicle ${vehiclesMap.get(previousView.vehicleId)?.routeShortName ?? ''}`.trim() : 'Back to nearby departures'
     : previousView?.tab === 'routes'
       ? `Back to route ${previousView.route?.shortName ?? previousView.routeId.replace('HSL:', '')}`
       : previousView?.tab === 'stops' ? `Back to ${previousView.stop.name}` : null;
@@ -241,7 +243,7 @@ const App = () => {
   const pushCurrentSheetView = useCallback(() => {
     let entry: SheetHistoryEntry | null = null;
 
-    if (activeTab === 'vehicles' && selectedVehicleId) {
+    if (activeTab === 'vehicles') {
       entry = { tab: 'vehicles', vehicleId: selectedVehicleId, stop: selectedStop };
     } else if (activeTab === 'routes' && selectedRouteId) {
       entry = { tab: 'routes', routeId: selectedRouteId, route: activatedRoute };
@@ -333,16 +335,29 @@ const App = () => {
     mqttService.connect().catch(console.error);
     watchUserLocation();
 
-    // Pan to user location on startup (with delay to let map initialize)
+    let userInteracted = false;
+    let disposed = false;
+    let initialPan: ReturnType<typeof setTimeout> | undefined;
+    const markInteraction = () => { userInteracted = true; };
+    for (const event of ['pointerdown', 'keydown', 'wheel']) document.addEventListener(event, markInteraction, { passive: true });
+
+    // A delayed GPS fix must not pull the map away after browsing has begun.
     requestUserLocation()
-      .then(() => {
-        setTimeout(() => {
-          flyToUserLocation();
+      .then((location) => {
+        if (disposed) return;
+        initialPan = setTimeout(() => {
+          if (userInteracted || disposed) return;
+          const { flyToLocation, bottomPadding } = useLocationStore.getState();
+          flyToLocation(location.latitude, location.longitude,
+            radiusToZoom(useSettingsStore.getState().locationRadius, location.latitude, bottomPadding));
         }, 100);
       })
       .catch(console.error);
 
     return () => {
+      disposed = true;
+      clearTimeout(initialPan);
+      for (const event of ['pointerdown', 'keydown', 'wheel']) document.removeEventListener(event, markInteraction);
       // During HMR the mqttService singleton persists via import.meta.hot.data,
       // so disconnecting would wipe its subscriptions set while React Refresh
       // preserves the useRef tracking (nearbyMqttRouteIds, tempMqttRouteIds).
@@ -618,7 +633,7 @@ const App = () => {
     } else {
       clearSelectedStop();
     }
-    const vehicle = useVehicleStore.getState().vehicles.get(previous.vehicleId);
+    const vehicle = previous.vehicleId ? useVehicleStore.getState().vehicles.get(previous.vehicleId) : undefined;
     if (vehicle) {
       ensureTemporaryRouteSubscription({
         gtfsId: `HSL:${vehicle.routeId}`, shortName: vehicle.routeShortName,
@@ -997,10 +1012,10 @@ const App = () => {
         onClose={handleClearSelectedEntity}
         contentRef={sheetContentRef}
         header={
-          <div className="flex items-center gap-2 mb-3 pt-1">
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none flex-1 min-w-0">
+          <div className="flex items-center gap-1 mb-2 pt-1">
+            <div className="flex items-center gap-0.5 min-[425px]:gap-2 flex-1 min-w-0">
               <button
-                className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap px-2 min-[425px]:px-3 min-h-11 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'vehicles'
                     ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -1013,7 +1028,7 @@ const App = () => {
                 Vehicles
               </button>
               <button
-                className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap px-2 min-[425px]:px-3 min-h-11 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'routes'
                     ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -1026,7 +1041,7 @@ const App = () => {
                 Routes
               </button>
               <button
-                className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap px-2 min-[425px]:px-3 min-h-11 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'stops'
                     ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -1041,15 +1056,18 @@ const App = () => {
             </div>
             <div className="relative shrink-0" ref={nearbyMenuRef}>
               <button
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex min-h-11 min-w-11 items-center justify-center gap-1.5 px-2 rounded-lg text-sm font-medium transition-colors ${
                   anyNearbyActive
                     ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 onClick={() => setNearbyMenuOpen(!nearbyMenuOpen)}
                 ref={nearbyBtnRef}
+                aria-label="Nearby options"
+                aria-expanded={nearbyMenuOpen}
               >
-                Nearby
+                <span className="hidden min-[375px]:inline">Nearby</span>
+                <span className="block h-4 w-4 min-[375px]:hidden"><LocationIcon /></span>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={nearbyMenuOpen ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
                 </svg>
@@ -1103,6 +1121,7 @@ const App = () => {
           {activeTab === 'vehicles' ? (
             selectedVehicle ? (
               <VehicleDetails
+                key={selectedVehicle.vehicleId}
                 vehicle={selectedVehicle}
                 onBack={handleVehicleDetailsBack}
                 onSubscribe={handleSelectedVehicleSubscribe}
@@ -1125,12 +1144,20 @@ const App = () => {
                 backTitle={previousViewLabel ?? (selectedStop ? `Back to ${selectedStop.name}` : 'Back to vehicles')}
               />
             ) : (
-              <VehicleList
-                selectedVehicleId={selectedVehicleId}
-                onVehicleClick={handleVehicleListClick}
-                onSubscribe={handleSubscribeFromVehicle}
-                onUnsubscribe={handleUnsubscribe}
-              />
+              <>
+                <NearbyDepartures stops={nearbyStopsWithinRadius} isCurrent={!!userLocation} onSelect={(stop) => {
+                  handleStopClick(stop);
+                  pushCurrentSheetView();
+                }} />
+                <section aria-label="Live vehicles">
+                  <VehicleList
+                    selectedVehicleId={selectedVehicleId}
+                    onVehicleClick={handleVehicleListClick}
+                    onSubscribe={handleSubscribeFromVehicle}
+                    onUnsubscribe={handleUnsubscribe}
+                  />
+                </section>
+              </>
             )
           ) : activeTab === 'routes' ? (
             selectedRoute ? (

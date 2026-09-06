@@ -1,10 +1,10 @@
+import { DetailHeader, DistanceFromYou, detailActionClass } from './DetailLayout';
 import { DetailBackButton } from './DetailBackButton';
 import { memo, useMemo, useEffect, useState } from 'react';
 import type { Route, Stop, StopDeparture } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useStopStore, useSubscribedStopStore, useVehicleStore } from '@/stores';
 import { useStopTimetable, getStopTermini, computeAllDepartureCountdowns } from '@/lib';
-import { DELAY_LATE_THRESHOLD, DELAY_EARLY_THRESHOLD } from '@/constants';
 import { StarIcon } from './StarToggleButton';
 
 interface StopDetailsProps {
@@ -24,14 +24,6 @@ const formatDepartureTime = (serviceDay: number, departure: number): string => {
 const getMinutesUntil = (serviceDay: number, departure: number, now: number): number => {
   const departureMs = (serviceDay + departure) * 1000;
   return Math.ceil((departureMs - now) / 60000);
-};
-
-const formatDelay = (delaySeconds: number): string => {
-  if (delaySeconds === 0) return 'On time';
-  const minutes = Math.round(delaySeconds / 60);
-  if (minutes === 0) return 'On time';
-  if (minutes > 0) return `+${minutes} min`;
-  return `${minutes} min`;
 };
 
 interface DepartureCountdownData {
@@ -54,13 +46,6 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now, 
   const color = TRANSPORT_COLORS[departure.routeMode] ?? TRANSPORT_COLORS.bus;
   const minutesUntil = getMinutesUntil(departure.serviceDay, departure.realtimeDeparture, now);
   const isCanceled = departure.realtimeState === 'CANCELED';
-
-  const delayClass =
-    departure.departureDelay > DELAY_LATE_THRESHOLD
-      ? 'text-red-500'
-      : departure.departureDelay < DELAY_EARLY_THRESHOLD
-        ? 'text-green-500'
-        : 'text-gray-500 dark:text-gray-400';
 
   // Countdown display
   const hasCountdown = !isCanceled && countdown.isPredicted && countdown.etaMinutes !== null;
@@ -86,7 +71,7 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now, 
       <div className="flex items-center gap-3">
         {/* Route badge */}
         <div
-          className="w-10 h-10 min-[425px]:w-12 min-[425px]:h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"
           style={{ backgroundColor: color }}
         >
           {departure.routeShortName}
@@ -94,24 +79,11 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now, 
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-gray-900 dark:text-white truncate">
+          <div className="text-sm font-medium text-gray-900 dark:text-white leading-snug">
             {departure.headsign || departure.routeLongName}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 text-xs">
-            {isCanceled ? (
-              <span className="text-red-500 font-medium">Canceled</span>
-            ) : (
-              <>
-                {departure.realtime && (
-                  <span className={delayClass}>{formatDelay(departure.departureDelay)}</span>
-                )}
-                {departure.realtime && <span className="text-gray-400">•</span>}
-                <span className="text-gray-500 dark:text-gray-400 capitalize">{departure.routeMode}</span>
-              </>
-            )}
-          </div>
           {!isCanceled && (
-            <div className={`mt-1 text-xs ${vehicleOnMap ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
+            <div className={`mt-0.5 text-[11px] ${vehicleOnMap ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
               {vehicleOnMap ? 'View vehicle →' : 'Vehicle not tracking yet'}
             </div>
           )}
@@ -119,10 +91,10 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now, 
 
         {/* Time */}
         <div className="shrink-0 text-right">
-          <div className={`text-base font-semibold ${countdownLabel ? countdownClass : 'text-gray-900 dark:text-white'}`}>
+          <div className={`text-sm font-semibold tabular-nums ${countdownLabel ? countdownClass : 'text-gray-900 dark:text-white'}`}>
             {isCanceled ? 'Canceled' : countdownLabel ? `≈ ${countdownLabel}` : minutesUntil < 0 ? `${Math.abs(minutesUntil)} min ago` : minutesUntil === 0 ? 'Due now' : `In ${minutesUntil} min`}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">
             {formatDepartureTime(departure.serviceDay, hasCountdown ? (now / 1000 - departure.serviceDay + countdown.etaMinutes! * 60) : departure.realtimeDeparture)}
             {!isCanceled && ` · ${updatesUnavailable ? 'Saved' : departure.realtime ? 'Live' : hasCountdown ? 'Estimated' : 'Scheduled'}`}
           </div>
@@ -215,88 +187,21 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
   return (
     <div className="min-w-0 overflow-hidden">
       <DetailBackButton label={backTitle} onClick={onBack} />
-      {/* Header with back button */}
-      <div className="flex items-center gap-3 mb-3 px-0.5 min-w-0">
-
-        <div
-          className="flex-1 min-w-0 overflow-hidden flex items-center gap-3 rounded-lg px-2 py-1 -mx-1"
-        >
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ backgroundColor: `${color}20`, border: `2px solid ${color}` }}
-          >
-            <StopIcon mode={stop.vehicleMode} />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-medium text-gray-900 dark:text-white truncate min-w-0">
-                {stop.name}
-              </span>
-              {stop.code && (
-                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-                  {stop.code}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-gray-500 dark:text-gray-400 capitalize shrink-0">{stop.vehicleMode}</span>
-              <span className="text-gray-400 shrink-0">•</span>
-              <span className="text-gray-500 dark:text-gray-400 truncate">{stop.routes.length} routes</span>
-            </div>
-            {termini && (
-              <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate" title={termini}>
-                {termini}
-              </div>
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {routeLabels.length > 0 && onRouteActivate && (
-        <div className="flex flex-wrap gap-1 mb-3 px-0.5">
-          {routeLabels.map((route) => (
-            <button
-              key={route.gtfsId}
-              className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold text-white hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: TRANSPORT_COLORS[route.mode ?? 'bus'] ?? TRANSPORT_COLORS.bus }}
-              onClick={() => onRouteActivate(route)}
-              title={route.longName}
-            >
-              {route.shortName}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="px-0.5 mb-3 flex gap-2">
-        {onReCenter && (
-          <button
-            onClick={onReCenter}
-            className="py-2 px-3 rounded-lg text-sm font-medium transition-colors bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-            title="Re-center on stop"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+      <div className="mb-4 space-y-3">
+        <DetailHeader
+          badge={<span className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: color + '18' }}><StopIcon mode={stop.vehicleMode} /></span>}
+          title={stop.name}
+          subtitle={<><span className="capitalize">{stop.vehicleMode}{stop.code ? ' · ' + stop.code : ''}</span><DistanceFromYou lat={stop.lat} lon={stop.lon} /></>}
+        />
+        <div className="flex flex-wrap gap-2">
+          <button className={detailActionClass} aria-label={isSubscribed ? 'Remove saved stop' : 'Save this stop'} aria-pressed={isSubscribed}
+            onClick={() => isSubscribed ? unsubscribeFromStop(stop.gtfsId) : subscribeToStop(stop)}>
+            <StarIcon active={isSubscribed} className="h-4 w-4" />{isSubscribed ? 'Saved stop' : 'Save stop'}
           </button>
-        )}
-        <button
-          onClick={() => isSubscribed ? unsubscribeFromStop(stop.gtfsId) : subscribeToStop(stop)}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-            isSubscribed
-              ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              : 'text-white hover:opacity-90'
-          }`}
-          style={!isSubscribed ? { backgroundColor: color } : undefined}
-        >
-          <StarIcon active={isSubscribed} className="w-4 h-4" />
-          {isSubscribed ? 'Remove saved stop' : 'Save this stop'}
-        </button>
+          {onReCenter && <button onClick={onReCenter} className={detailActionClass}>Show stop on map</button>}
+        </div>
       </div>
-
+      <h3 className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Next departures</h3>
       {/* Timetable */}
       {timetable && updatesUnavailable && (
         <div role="status" className="mb-3 rounded-xl bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
@@ -344,6 +249,20 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
           })}
         </div>
       )}
+      {routeLabels.length > 0 && onRouteActivate && (
+        <details className="mt-4 rounded-xl border border-gray-200 dark:border-gray-800">
+          <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-gray-600 dark:text-gray-300">Routes at this stop · {routeLabels.length}</summary>
+          <div className="px-3 pb-3">
+            {termini && <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Towards {termini}</p>}
+            <div className="flex flex-wrap gap-2">
+              {routeLabels.map((route) => <button key={route.gtfsId} onClick={() => onRouteActivate(route)} title={route.longName}
+                aria-label={`Open route ${route.shortName}`} className="min-h-11 min-w-11 rounded-lg px-3 text-sm font-semibold text-white hover:opacity-80 focus-visible:outline-primary-500"
+                style={{ backgroundColor: TRANSPORT_COLORS[route.mode ?? 'bus'] ?? TRANSPORT_COLORS.bus }}>{route.shortName}</button>)}
+            </div>
+          </div>
+        </details>
+      )}
+
     </div>
   );
 };
