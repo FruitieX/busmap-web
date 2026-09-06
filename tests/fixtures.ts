@@ -1,30 +1,9 @@
 import { test as base, expect, type Page, type WebSocketRoute } from '@playwright/test';
 
-// Keep the browser clock aligned with MQTT's timer worker (which Playwright's
-// page clock cannot control). Derive fixture departures relative to this time.
-export const NOW = new Date();
-const operatingDay = NOW.toLocaleDateString('en-CA', { timeZone: 'Europe/Helsinki' });
-const midnightUtc = Date.parse(`${operatingDay}T00:00:00Z`);
-const offset = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Helsinki', timeZoneName: 'shortOffset' })
-  .formatToParts(midnightUtc).find((part) => part.type === 'timeZoneName')!.value;
-export const SERVICE_DAY = midnightUtc / 1000 - Number(offset.replace('GMT', '')) * 3600;
-const nowSeconds = Math.floor(NOW.getTime() / 1000) - SERVICE_DAY;
 export const route = { gtfsId: 'HSL:2551', shortName: '551', longName: 'Westend - Pasila', mode: 'BUS' };
 export const stops = ['Westend', 'Otaniemi', 'Pasila'].map((name, i) => ({
   gtfsId: `HSL:${1220101 + i}`, name, code: `E${1000 + i}`,
   lat: 60.17 + i * 0.005, lon: 24.94 + i * 0.005, vehicleMode: 'BUS', routes: [route],
-}));
-const departures = [nowSeconds - 120, nowSeconds + 120, nowSeconds + 360];
-const stoptimes = stops.map((stop, i) => ({
-  stop, serviceDay: SERVICE_DAY, stopPositionInPattern: i,
-  scheduledArrival: departures[i], scheduledDeparture: departures[i],
-  realtimeArrival: departures[i], realtimeDeparture: departures[i],
-  departureDelay: 0, realtime: true, realtimeState: 'UPDATED',
-}));
-const timetable = [12 * 3600, 13 * 3600].map((start, i) => ({
-  scheduledDeparture: departures[1] + i * 3600, realtimeDeparture: departures[1] + i * 3600,
-  departureDelay: 0, realtime: true, realtimeState: 'UPDATED', headsign: 'Pasila', serviceDay: SERVICE_DAY,
-  trip: { directionId: '0', departureStoptime: { scheduledDeparture: start }, route },
 }));
 
 // A minimal MQTT 3.1.1 broker at the WebSocket boundary. The app still runs its
@@ -42,6 +21,28 @@ function packet(header: number, body: Buffer) {
 }
 
 export async function mockServices(page: Page) {
+  // Reset for every test, not every worker: slow CI workers otherwise accumulate
+  // clock skew against MQTT's real-time timer worker between browser contexts.
+  const NOW = new Date();
+  await page.clock.install({ time: NOW });
+  const operatingDay = NOW.toLocaleDateString('en-CA', { timeZone: 'Europe/Helsinki' });
+  const midnightUtc = Date.parse(`${operatingDay}T00:00:00Z`);
+  const offset = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Helsinki', timeZoneName: 'shortOffset' })
+    .formatToParts(midnightUtc).find((part) => part.type === 'timeZoneName')!.value;
+  const serviceDay = midnightUtc / 1000 - Number(offset.replace('GMT', '')) * 3600;
+  const nowSeconds = Math.floor(NOW.getTime() / 1000) - serviceDay;
+  const departures = [nowSeconds - 120, nowSeconds + 120, nowSeconds + 360];
+  const stoptimes = stops.map((stop, i) => ({
+    stop, serviceDay, stopPositionInPattern: i,
+    scheduledArrival: departures[i], scheduledDeparture: departures[i],
+    realtimeArrival: departures[i], realtimeDeparture: departures[i],
+    departureDelay: 0, realtime: true, realtimeState: 'UPDATED',
+  }));
+  const timetable = [12 * 3600, 13 * 3600].map((start, i) => ({
+    scheduledDeparture: departures[1] + i * 3600, realtimeDeparture: departures[1] + i * 3600,
+    departureDelay: 0, realtime: true, realtimeState: 'UPDATED', headsign: 'Pasila', serviceDay,
+    trip: { directionId: '0', departureStoptime: { scheduledDeparture: start }, route },
+  }));
   const sockets = new Set<WebSocketRoute>();
   let failTimetable = false;
   const unexpectedRequests: string[] = [];
@@ -128,7 +129,6 @@ export const test = base.extend<{ app: Awaited<ReturnType<typeof mockServices>> 
   app: [async ({ page, context }, use) => {
     await context.grantPermissions(['geolocation']);
     await context.setGeolocation({ latitude: 60.175, longitude: 24.945 });
-    await page.clock.install({ time: NOW });
     await page.addInitScript((savedRoute) => {
       // Seed only on the first load; reload tests must exercise actual persistence.
       if (!localStorage.getItem('busmap-subscriptions')) {
