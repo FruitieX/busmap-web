@@ -1,6 +1,8 @@
 [build]
-  command = "npm run ci:build"
+  # A failing test exits the build before Netlify can publish dist.
+  command = "npm run ci:deploy"
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "22"
+  NODE_VERSION = "24.20.0"
+  CI = "true"

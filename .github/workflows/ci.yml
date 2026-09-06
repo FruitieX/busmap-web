@@ -2,8 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: ['**']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -13,6 +18,10 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # All transit HTTP/WebSocket requests are fulfilled by test fixtures.
+      # Fork/Renovate PRs do not need production API secrets.
+      VITE_DIGITRANSIT_API_KEY: ci-fixture-key
 
     steps:
       - name: Check out repository
@@ -27,30 +36,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Build
-        run: npm run build
+      - name: Lint, typecheck and verify production build
+        run: npm run ci:build
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Start preview and run browser smoke test
-        run: |
-          npm run preview -- --host 127.0.0.1 --port 4173 > preview.log 2>&1 &
-          preview_pid=$!
-          trap 'kill "$preview_pid"' EXIT
+      - name: Unit and production-browser tests
+        run: npm test
 
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          curl --fail --silent http://127.0.0.1:4173/ > /dev/null
-          npm run ci:smoke
+      - name: Upload test report and failure traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

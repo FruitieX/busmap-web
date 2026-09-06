@@ -47,6 +47,8 @@ npm run dev          # Vite dev server
 npm run build        # TypeScript check + Vite production build
 npm run lint         # ESLint
 npm run typecheck    # tsc --noEmit
+npm run ci:build     # Lint, app/test typechecks, production build, asset validation
+npm test             # Unit + desktop/mobile Playwright tests against dist
 ```
 
 Requires `VITE_DIGITRANSIT_API_KEY` in `.env` (register at https://portal-api.digitransit.fi/).
@@ -58,7 +60,7 @@ Requires `VITE_DIGITRANSIT_API_KEY` in `.env` (register at https://portal-api.di
 - **Transport modes:** Always use `normalizeMode()` from `api.ts` when handling mode strings from the API (maps `subway`→`metro`, `rail`→`train`, etc.)
 - **Colors:** Use `TRANSPORT_COLORS` from `types.ts` for mode-based coloring
 - **Styling:** Tailwind CSS with `dark:` variant; theme applied via `document.documentElement.classList`
-- **No test framework** — the project has no test suite
+- **Tests:** Playwright Test in `tests/`, running against the production build. Mock services at HTTP/WebSocket boundaries, never replace application stores or components. Run `npm run ci:build` before `npm test`; install Chromium with `npx playwright install --with-deps chromium`.
 
 ## Patterns to Follow
 
