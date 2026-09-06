@@ -1,9 +1,9 @@
+import { DetailBackButton } from './DetailBackButton';
 import { memo, useMemo, useEffect, useState } from 'react';
 import type { Route, Stop, StopDeparture } from '@/types';
 import { TRANSPORT_COLORS } from '@/types';
 import { useStopStore, useSubscribedStopStore, useVehicleStore } from '@/stores';
 import { useStopTimetable, getStopTermini, computeAllDepartureCountdowns } from '@/lib';
-import { MPS_TO_KMPH } from '@/constants';
 import { DELAY_LATE_THRESHOLD, DELAY_EARLY_THRESHOLD } from '@/constants';
 import { StarIcon } from './StarToggleButton';
 
@@ -47,9 +47,10 @@ interface DepartureCardProps {
   vehicleOnMap: boolean;
   countdown: DepartureCountdownData;
   now: number;
+  updatesUnavailable: boolean;
 }
 
-const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }: DepartureCardProps) => {
+const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now, updatesUnavailable }: DepartureCardProps) => {
   const color = TRANSPORT_COLORS[departure.routeMode] ?? TRANSPORT_COLORS.bus;
   const minutesUntil = getMinutesUntil(departure.serviceDay, departure.realtimeDeparture, now);
   const isCanceled = departure.realtimeState === 'CANCELED';
@@ -66,9 +67,7 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }
   const countdownLabel = hasCountdown
     ? countdown.etaMinutes! < 1
       ? 'Due now'
-      : countdown.etaMinutes! < 5
-        ? `${Math.ceil(countdown.etaMinutes!)} min`
-        : `${Math.round(countdown.etaMinutes!)} min`
+      : `In ${Math.ceil(countdown.etaMinutes!)} min`
     : null;
 
   const countdownClass = hasCountdown
@@ -80,8 +79,8 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }
   return (
     <button
       type="button"
-      disabled={isCanceled}
-      className={`w-full text-left bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 transition-all duration-150 ${isCanceled ? 'opacity-50' : ''}`}
+      disabled={isCanceled || !vehicleOnMap}
+      className={`w-full text-left bg-gray-50 dark:bg-gray-800 rounded-xl p-2 min-[425px]:p-3 enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700 disabled:cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 transition-all duration-150 ${isCanceled ? 'opacity-50' : ''}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-3">
@@ -98,7 +97,7 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }
           <div className="font-medium text-gray-900 dark:text-white truncate">
             {departure.headsign || departure.routeLongName}
           </div>
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-x-2 text-xs">
             {isCanceled ? (
               <span className="text-red-500 font-medium">Canceled</span>
             ) : (
@@ -108,38 +107,24 @@ const DepartureCard = memo(({ departure, onClick, vehicleOnMap, countdown, now }
                 )}
                 {departure.realtime && <span className="text-gray-400">•</span>}
                 <span className="text-gray-500 dark:text-gray-400 capitalize">{departure.routeMode}</span>
-                {hasCountdown && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className={countdownClass}>≈ {countdownLabel}</span>
-                    {countdown.vehicle && (
-                      <>
-                        <span className="text-gray-400">•</span>
-                        <span className="text-gray-500 dark:text-gray-400">
-                          #{countdown.vehicle.vehicleNumber} · {Math.round(countdown.vehicle.speed * MPS_TO_KMPH)} km/h
-                        </span>
-                      </>
-                    )}
-                  </>
-                )}
-                {!hasCountdown && !vehicleOnMap && !isCanceled && (
-                  <>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-gray-400 italic">no vehicle</span>
-                  </>
-                )}
               </>
             )}
           </div>
+          {!isCanceled && (
+            <div className={`mt-1 text-xs ${vehicleOnMap ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
+              {vehicleOnMap ? 'View vehicle →' : 'Vehicle not tracking yet'}
+            </div>
+          )}
         </div>
 
         {/* Time */}
         <div className="shrink-0 text-right">
-          <div className="text-sm font-semibold text-gray-900 dark:text-white">
-            {formatDepartureTime(departure.serviceDay, departure.realtimeDeparture)}
+          <div className={`text-base font-semibold ${countdownLabel ? countdownClass : 'text-gray-900 dark:text-white'}`}>
+            {isCanceled ? 'Canceled' : countdownLabel ? `≈ ${countdownLabel}` : minutesUntil < 0 ? `${Math.abs(minutesUntil)} min ago` : minutesUntil === 0 ? 'Due now' : `In ${minutesUntil} min`}
           </div>
-          <div className={`text-xs ${countdownLabel ? countdownClass : minutesUntil <= 1 ? 'text-primary-500 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
-            {isCanceled ? 'Canceled' : countdownLabel ? `≈ ${countdownLabel}` : minutesUntil < 0 ? `${Math.abs(minutesUntil)} min ago` : minutesUntil === 0 ? 'Now' : `${minutesUntil} min`}
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {formatDepartureTime(departure.serviceDay, hasCountdown ? (now / 1000 - departure.serviceDay + countdown.etaMinutes! * 60) : departure.realtimeDeparture)}
+            {!isCanceled && ` · ${updatesUnavailable ? 'Saved' : departure.realtime ? 'Live' : hasCountdown ? 'Estimated' : 'Scheduled'}`}
           </div>
         </div>
       </div>
@@ -151,8 +136,9 @@ DepartureCard.displayName = 'DepartureCard';
 
 const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRouteActivate, backTitle = 'Back to stops' }: StopDetailsProps) => {
   const setStopDirections = useStopStore((state) => state.setStopDirections);
-  const { data: timetable, isLoading, isError, refetch } = useStopTimetable(stop.gtfsId);
+  const { data: timetable, isLoading, isError, refetch, dataUpdatedAt, fetchStatus } = useStopTimetable(stop.gtfsId);
   const [now, setNow] = useState(Date.now());
+  const updatesUnavailable = isError || fetchStatus === 'paused' || now - dataUpdatedAt > 90_000;
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
@@ -228,18 +214,9 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
 
   return (
     <div className="min-w-0 overflow-hidden">
+      <DetailBackButton label={backTitle} onClick={onBack} />
       {/* Header with back button */}
       <div className="flex items-center gap-3 mb-3 px-0.5 min-w-0">
-        <button
-          onClick={onBack}
-          aria-label={backTitle}
-          title={backTitle}
-          className="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
 
         <div
           className="flex-1 min-w-0 overflow-hidden flex items-center gap-3 rounded-lg px-2 py-1 -mx-1"
@@ -321,6 +298,12 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
       </div>
 
       {/* Timetable */}
+      {timetable && updatesUnavailable && (
+        <div role="status" className="mb-3 rounded-xl bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          Updates unavailable · Showing saved departures
+          <button type="button" onClick={() => void refetch()} className="ml-2 underline">Retry</button>
+        </div>
+      )}
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <div className="w-8 h-8 mb-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
@@ -355,6 +338,7 @@ const StopDetailsComponent = ({ stop, onBack, onDepartureClick, onReCenter, onRo
                 vehicleOnMap={countdown.vehicle !== null}
                 countdown={countdown}
                 now={now}
+                updatesUnavailable={updatesUnavailable}
               />
             );
           })}

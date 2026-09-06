@@ -1,3 +1,4 @@
+import { DetailBackButton } from './DetailBackButton';
 import type { Route, RoutePattern, SubscribedRoute, TrackedVehicle } from '@/types';
 import { useSettingsStore } from '@/stores';
 import { resolveRouteColor } from '@/lib';
@@ -84,16 +85,8 @@ export const RouteDetails = ({
 
   return (
     <div className="space-y-3 px-0.5">
+      <DetailBackButton label={backTitle} onClick={onBack} />
       <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title={backTitle}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
 
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0"

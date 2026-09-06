@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { useRef, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { motion, useMotionValue, useTransform, useDragControls, animate, type MotionValue } from 'framer-motion';
 import {
   SHEET_MIN_HEIGHT,
@@ -37,21 +37,44 @@ export const BottomSheet = ({
 }: BottomSheetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
+  const draggedRef = useRef(false);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    const resize = () => setViewportHeight(window.visualViewport?.height ?? window.innerHeight);
+    resize();
+    window.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
+    };
+  }, []);
+  const expandedHeight = Math.max(minHeight, Math.min(maxHeight, viewportHeight - 64));
+  const readingHeight = Math.min(defaultHeight, expandedHeight);
 
   // If an initialHeight is provided, offset y so the sheet starts at that height
   // height = defaultHeight - y  =>  y = defaultHeight - initialHeight
   const clampedInitial = initialHeight
-    ? Math.max(minHeight, Math.min(maxHeight, initialHeight))
-    : defaultHeight;
+    ? Math.max(minHeight, Math.min(expandedHeight, initialHeight))
+    : readingHeight;
   const y = useMotionValue(defaultHeight - clampedInitial);
   // height = defaultHeight - y: dragging down (positive y) shrinks, dragging up (negative y) grows
-  const height = useTransform(y, [defaultHeight - minHeight, -(maxHeight - defaultHeight)], [minHeight, maxHeight]);
+  const height = useTransform(y, (offset) => Math.max(minHeight, Math.min(expandedHeight, defaultHeight - offset)));
+  const [sizeLabel, setSizeLabel] = useState('reading');
+  const snapTo = useCallback((target: number) => {
+    animate(y, defaultHeight - target, SHEET_SPRING);
+  }, [y, defaultHeight]);
+  const snapAfterDrag = () => {
+    const points = [minHeight, readingHeight, expandedHeight];
+    const current = height.get();
+    snapTo(points.reduce((best, point) => Math.abs(point - current) < Math.abs(best - current) ? point : best));
+  };
 
   const expand = useCallback(() => {
     if (height.get() < SHEET_EXPAND_THRESHOLD) {
-      animate(y, 0, SHEET_SPRING);
+      snapTo(readingHeight);
     }
-  }, [y, height]);
+  }, [height, snapTo, readingHeight]);
 
   useEffect(() => {
     onExpand?.(expand);
@@ -68,9 +91,10 @@ export const BottomSheet = ({
     onHeightChange?.(height.get());
     const unsubscribe = height.on('change', (h) => {
       onHeightChange?.(h);
+      setSizeLabel(h < (minHeight + readingHeight) / 2 ? 'compact' : h < (readingHeight + expandedHeight) / 2 ? 'reading' : 'expanded');
     });
     return unsubscribe;
-  }, [height, onHeightChange]);
+  }, [height, onHeightChange, minHeight, readingHeight, expandedHeight]);
 
   // Handle ESC key to minimize sheet
   useEffect(() => {
@@ -88,9 +112,11 @@ export const BottomSheet = ({
 
   const startDrag = useCallback(
     (event: React.PointerEvent) => {
+      draggedRef.current = false;
+      y.stop();
       dragControls.start(event);
     },
-    [dragControls]
+    [dragControls, y]
   );
 
   return (
@@ -105,20 +131,36 @@ export const BottomSheet = ({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
     >
-      {/* Drag handle - visual only */}
-      <div
-        className="flex justify-center py-2 shrink-0 cursor-grab active:cursor-grabbing touch-none"
+      {/* Tap cycles sizes; dragging snaps to the nearest size. */}
+      <button
+        type="button"
+        aria-label={`Sheet ${sizeLabel}. Change sheet size`}
+        title="Tap to resize, or drag"
+        className="flex justify-center items-center min-h-8 shrink-0 cursor-grab active:cursor-grabbing touch-none rounded-t-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
         onPointerDown={startDrag}
+        onClick={() => {
+          if (draggedRef.current) { draggedRef.current = false; return; }
+          const current = height.get();
+          snapTo(current < readingHeight - 2 ? readingHeight : current < expandedHeight - 2 ? expandedHeight : minHeight);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            snapTo(event.key === 'ArrowUp' ? expandedHeight : minHeight);
+          }
+        }}
       >
-        <div className="sheet-handle" />
-      </div>
+        <span className="sheet-handle" />
+      </button>
 
       {/* Invisible drag tracker - doesn't move visually, just tracks y for height */}
       <motion.div
         drag="y"
         dragControls={dragControls}
         dragListener={false}
-        dragConstraints={{ top: -(maxHeight - defaultHeight), bottom: defaultHeight - minHeight }}
+        dragConstraints={{ top: defaultHeight - expandedHeight, bottom: defaultHeight - minHeight }}
+        onDragStart={() => { draggedRef.current = true; }}
+        onDragEnd={snapAfterDrag}
         dragElastic={0}
         dragMomentum={false}
         style={{ y }}

@@ -1,8 +1,9 @@
+import { DetailBackButton } from './DetailBackButton';
 import { useEffect, useMemo, useState } from 'react';
 import type { Route, Stop, TrackedVehicle, VehicleTripStop } from '@/types';
 import { useSettingsStore, useSubscriptionStore } from '@/stores';
 import { resolveRouteColor, useVehicleTrip } from '@/lib';
-import { DELAY_EARLY_THRESHOLD, DELAY_LATE_THRESHOLD, MPS_TO_KMPH } from '@/constants';
+import { DELAY_EARLY_THRESHOLD, DELAY_LATE_THRESHOLD, MPS_TO_KMPH, getVehicleTiming } from '@/constants';
 import { StarIcon } from './StarToggleButton';
 
 interface VehicleDetailsProps {
@@ -91,6 +92,7 @@ export const VehicleDetails = ({
   const developerMode = useSettingsStore((state) => state.developerMode);
   const routeColorMode = useSettingsStore((state) => state.routeColorMode);
   const [now, setNow] = useState(Date.now());
+  const isStale = now - vehicle.lastUpdate >= getVehicleTiming(vehicle.mode).fadeEndMs;
   const { data: vehicleTrip, isLoading: isTripLoading, isError: isTripError } = useVehicleTrip(vehicle);
 
   useEffect(() => {
@@ -158,16 +160,8 @@ export const VehicleDetails = ({
 
   return (
     <div className="space-y-3 px-0.5">
+      <DetailBackButton label={backTitle} onClick={onBack} />
       <div className="flex items-center gap-3">
-        <button
-          onClick={onBack}
-          className="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          title={backTitle}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
 
         <button
           className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0 hover:opacity-85 transition-opacity"
@@ -188,7 +182,12 @@ export const VehicleDetails = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
+      {isStale && (
+        <div role="status" className="rounded-xl bg-amber-50 dark:bg-amber-950 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+          Last seen {formatLastUpdate(vehicle.lastUpdate, now)} · Waiting for vehicle updates
+        </div>
+      )}
+      <div className={`grid grid-cols-3 gap-2 text-center ${isStale ? 'opacity-50' : ''}`}>
         <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-2">
           <div className={`text-sm font-semibold ${delayClass}`}>{formatDelay(vehicle.delay)}</div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400">Delay</div>
@@ -202,55 +201,6 @@ export const VehicleDetails = ({
           <div className="text-[10px] text-gray-500 dark:text-gray-400">Updated</div>
         </div>
       </div>
-
-      {developerMode && (
-        <div className="text-xs text-gray-500 dark:text-gray-500 space-y-1 font-mono bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-          <div className="flex justify-between gap-3">
-            <span>Vehicle ID:</span>
-            <span className="text-right break-all">{vehicle.vehicleId}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Route ID:</span>
-            <span>{vehicle.routeId}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Position:</span>
-            <span>{vehicle.lat.toFixed(5)}, {vehicle.lng.toFixed(5)}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Heading:</span>
-            <span>{vehicle.heading?.toFixed(0) ?? 'N/A'} deg</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Acceleration:</span>
-            <span>{vehicle.acceleration?.toFixed(2) ?? 'N/A'} m/s2</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Door status:</span>
-            <span>{vehicle.doorStatus === 1 ? 'Open' : 'Closed'}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Occupancy:</span>
-            <span>{vehicle.occupancy}%</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Operating day:</span>
-            <span>{vehicle.operatingDay}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Start time:</span>
-            <span>{vehicle.startTime}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Next stop:</span>
-            <span>{vehicle.nextStopId || 'N/A'}</span>
-          </div>
-          <div className="flex justify-between gap-3">
-            <span>Operator:</span>
-            <span>{vehicle.operatorId}</span>
-          </div>
-        </div>
-      )}
 
       <div className="flex gap-2">
         {!isFollowing && onReFollow && (
@@ -371,6 +321,56 @@ export const VehicleDetails = ({
           </div>
         )}
       </div>
+
+      {developerMode && (
+        <details className="text-xs text-gray-500 dark:text-gray-500 space-y-1 font-mono bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+          <summary className="cursor-pointer font-sans font-medium py-1">Technical details</summary>
+          <div className="flex justify-between gap-3">
+            <span>Vehicle ID:</span>
+            <span className="text-right break-all">{vehicle.vehicleId}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Route ID:</span>
+            <span>{vehicle.routeId}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Position:</span>
+            <span>{vehicle.lat.toFixed(5)}, {vehicle.lng.toFixed(5)}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Heading:</span>
+            <span>{vehicle.heading?.toFixed(0) ?? 'N/A'} deg</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Acceleration:</span>
+            <span>{vehicle.acceleration?.toFixed(2) ?? 'N/A'} m/s2</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Door status:</span>
+            <span>{vehicle.doorStatus === 1 ? 'Open' : 'Closed'}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Occupancy:</span>
+            <span>{vehicle.occupancy}%</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Operating day:</span>
+            <span>{vehicle.operatingDay}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Start time:</span>
+            <span>{vehicle.startTime}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Next stop:</span>
+            <span>{vehicle.nextStopId || 'N/A'}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span>Operator:</span>
+            <span>{vehicle.operatorId}</span>
+          </div>
+        </details>
+      )}
 
     </div>
   );

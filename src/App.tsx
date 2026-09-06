@@ -201,6 +201,12 @@ const App = () => {
   const vehicles = useMemo(() => Array.from(vehiclesMap.values()), [vehiclesMap]);
   const selectedVehicle = selectedVehicleId ? vehiclesMap.get(selectedVehicleId) ?? null : null;
   const selectedVehicleRouteId = selectedVehicle?.routeId;
+  const previousView = sheetHistoryRef.current.at(-1);
+  const previousViewLabel = previousView?.tab === 'vehicles'
+    ? `Back to vehicle ${vehiclesMap.get(previousView.vehicleId)?.routeShortName ?? ''}`.trim()
+    : previousView?.tab === 'routes'
+      ? `Back to route ${previousView.route?.shortName ?? previousView.routeId.replace('HSL:', '')}`
+      : previousView?.tab === 'stops' ? `Back to ${previousView.stop.name}` : null;
   const { subscribeToRoute, unsubscribeFromRoute } = useSubscriptionStore();
   const flyToUserLocation = useLocationStore((state) => state.flyToUserLocation);
   const setBottomPadding = useLocationStore((state) => state.setBottomPadding);
@@ -648,16 +654,6 @@ const App = () => {
     });
   }, [clearSelectedStop, cleanupTempSubscriptions, clearSheetHistory, restorePreviousSheetView]);
 
-  // Handle deselecting a vehicle while a stop remains selected
-  const handleVehicleDeselect = useCallback(() => {
-    setSelectedVehicleId(null);
-    if (selectedStop) {
-      showSheetTab('stops');
-      const { flyToLocation } = useLocationStore.getState();
-      flyToLocation(selectedStop.lat, selectedStop.lon, 14);
-    }
-  }, [selectedStop, showSheetTab]);
-
   // Handle clicking a timetable departure to find and select matching vehicle
   const handleDepartureClick = useCallback(
     (departure: StopDeparture) => {
@@ -681,12 +677,9 @@ const App = () => {
         showSheetTab('vehicles');
         const { flyToLocation } = useLocationStore.getState();
         flyToLocation(bestMatch.lat, bestMatch.lng, VEHICLE_FLY_TO_ZOOM);
-      } else {
-        // Vehicle not yet tracking — deselect any selected vehicle and recenter stop
-        handleVehicleDeselect();
       }
     },
-    [handleVehicleDeselect, pushCurrentSheetView, showSheetTab],
+    [pushCurrentSheetView, showSheetTab],
   );
 
   // Close nearby menu when clicking outside, and keep position up-to-date while open
@@ -1129,7 +1122,7 @@ const App = () => {
                   showSheetTab('stops');
                   useLocationStore.getState().flyToLocation(fullStop.lat, fullStop.lon, 14);
                 }}
-                backTitle={selectedStop ? 'Back to stop' : 'Back to vehicles'}
+                backTitle={previousViewLabel ?? (selectedStop ? `Back to ${selectedStop.name}` : 'Back to vehicles')}
               />
             ) : (
               <VehicleList
@@ -1151,7 +1144,7 @@ const App = () => {
                 onUnsubscribe={handleSelectedRouteUnsubscribe}
                 onReCenter={mapCameraState.hasMovedFromRoute ? mapCameraActions?.recenterRoute : undefined}
                 onVehicleSelect={handleRouteVehicleSelect}
-                backTitle={selectedStop ? 'Back to stop' : 'Back to routes'}
+                backTitle={previousViewLabel ?? (selectedStop ? `Back to ${selectedStop.name}` : 'Back to routes')}
               />
             ) : (
               <>
@@ -1219,7 +1212,7 @@ const App = () => {
             <StopDetails
               stop={selectedStop}
               onBack={handleStopBack}
-              backTitle={sheetHistoryRef.current.at(-1)?.tab === 'vehicles' ? 'Back to vehicle' : 'Back to stops'}
+              backTitle={previousViewLabel ?? 'Back to stops'}
               onDepartureClick={handleDepartureClick}
               onReCenter={mapCameraState.hasMovedFromStop ? mapCameraActions?.recenterStop : undefined}
               onRouteActivate={handleStopRouteActivate}

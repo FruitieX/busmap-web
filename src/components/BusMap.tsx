@@ -494,7 +494,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
         if (age > timing.fadeStartMs) {
           staleness = Math.min(1, (age - timing.fadeStartMs) / (timing.fadeEndMs - timing.fadeStartMs));
         }
-        if (staleness >= 1) continue;
+        if (age >= timing.staleTimeoutMs) continue;
 
         // Calculate exit progress
         let exitProgress = 0;
@@ -504,7 +504,7 @@ const BusMapComponent = ({ patterns, onVehicleClick, nearbyRadius, selectedVehic
         }
 
         // Base opacity from staleness and exit
-        let opacity = (1 - staleness) * (1 - exitProgress);
+        let opacity = (1 - staleness * 0.65) * (1 - exitProgress);
         
         // Fade factor for vehicles outside the active map focus
         let routeFadeFactor = 1;
