@@ -1,6 +1,6 @@
 {
   "name": "busmap",
-  "version": "3.8.0",
+  "version": "3.8.1",
   "description": "Real-time public transport vehicle tracker",
   "license": "MIT",
   "type": "module",
