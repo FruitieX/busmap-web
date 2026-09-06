@@ -20,7 +20,8 @@ needed: CI builds with a dummy API key and tests intercept transit requests.
   service-worker activation and offline app-shell reload.
 
 Tests exercise the compiled app through its UI. HTTP and MQTT WebSocket fixtures
-provide fixed data and the browser clock provides a fixed service date. Map styles
+provide controlled data with departures relative to the test clock. The clock
+starts at real time to stay aligned with MQTT's timer worker. Map styles
 use a minimal local fixture, while the real MapLibre renderer and emitted worker
 still run. This catches integration regressions without depending on HSL, CARTO,
 credentials, or vehicles happening to be on the road. It does not validate live

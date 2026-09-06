@@ -1,13 +1,20 @@
 import { test as base, expect, type Page, type WebSocketRoute } from '@playwright/test';
 
-export const NOW = new Date('2026-09-06T09:03:00Z');
-export const SERVICE_DAY = Date.parse('2026-09-05T21:00:00Z') / 1000;
+// Keep the browser clock aligned with MQTT's timer worker (which Playwright's
+// page clock cannot control). Derive fixture departures relative to this time.
+export const NOW = new Date();
+const operatingDay = NOW.toLocaleDateString('en-CA', { timeZone: 'Europe/Helsinki' });
+const midnightUtc = Date.parse(`${operatingDay}T00:00:00Z`);
+const offset = new Intl.DateTimeFormat('en', { timeZone: 'Europe/Helsinki', timeZoneName: 'shortOffset' })
+  .formatToParts(midnightUtc).find((part) => part.type === 'timeZoneName')!.value;
+export const SERVICE_DAY = midnightUtc / 1000 - Number(offset.replace('GMT', '')) * 3600;
+const nowSeconds = Math.floor(NOW.getTime() / 1000) - SERVICE_DAY;
 export const route = { gtfsId: 'HSL:2551', shortName: '551', longName: 'Westend - Pasila', mode: 'BUS' };
 export const stops = ['Westend', 'Otaniemi', 'Pasila'].map((name, i) => ({
   gtfsId: `HSL:${1220101 + i}`, name, code: `E${1000 + i}`,
   lat: 60.17 + i * 0.005, lon: 24.94 + i * 0.005, vehicleMode: 'BUS', routes: [route],
 }));
-const departures = [12 * 3600 + 60, 12 * 3600 + 5 * 60, 12 * 3600 + 9 * 60];
+const departures = [nowSeconds - 120, nowSeconds + 120, nowSeconds + 360];
 const stoptimes = stops.map((stop, i) => ({
   stop, serviceDay: SERVICE_DAY, stopPositionInPattern: i,
   scheduledArrival: departures[i], scheduledDeparture: departures[i],
@@ -45,11 +52,17 @@ export async function mockServices(page: Page) {
     const payload = Buffer.from(JSON.stringify({ VP: {
       desi: '551', dir: '1', oper: 12, veh: 42, tst: NOW.toISOString(), tsi: NOW.getTime() / 1000,
       spd: 0, hdg: 90, lat: 60.175, long: 24.945, acc: 0, dl: 0, drst: 0,
-      oday: '2026-09-06', start: '12:00', route: '2551', stop: 1220102, occu: 20, ...overrides,
+      oday: operatingDay, start: '12:00', route: '2551', stop: 1220102, occu: 20, ...overrides,
     } }));
     for (const socket of sockets) socket.send(packet(0x30, Buffer.concat([topicLength, topic, payload])));
   };
-  await page.routeWebSocket('wss://mqtt.hsl.fi/**', (socket) => {
+  await page.routeWebSocket(/.*/, (socket) => {
+    const url = new URL(socket.url());
+    if (url.protocol !== 'wss:' || url.hostname !== 'mqtt.hsl.fi') {
+      unexpectedRequests.push(`WebSocket ${url.origin}${url.pathname}`);
+      socket.close();
+      return;
+    }
     sockets.add(socket);
     let pending = Buffer.alloc(0);
     socket.onClose(() => sockets.delete(socket));
